@@ -51,10 +51,18 @@ restart.
 
 ## Deploy
 
-It needs to stay connected, so run it on an always-on host. A `Dockerfile` is provided:
+It needs to stay connected, so run it on an always-on host. It's outbound-only (a gateway
+WebSocket — no inbound ports), so it works behind NAT and needs no public URL.
+
+**Fly.io** (easiest always-on) — a ready-to-edit [`fly.toml`](../fly.toml) is at the repo root.
+See [SETUP.md §6](../SETUP.md). In short: `fly launch --no-deploy`, `fly secrets set …`, `fly deploy`.
+
+**Docker** — build from the **repo root** (not `bot/`) so `knowledge/` and `personas/` are
+included:
 
 ```bash
-docker build -t llm-mmo bot/ && docker run --env-file bot/.env llm-mmo
+docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env llm-mmo
 ```
 
-Or run `uv run python -m bot` under `systemd`/`pm2`/your platform's process manager.
+**systemd / pm2** — run `uv run python -m bot` under your process manager so it restarts on
+crash/reboot.

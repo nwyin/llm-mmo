@@ -1,0 +1,34 @@
+# Fly.io config for the llm-mmo Discord bot.
+#
+# The bot is a WORKER: it opens an outbound WebSocket to Discord's gateway and
+# needs NO inbound ports — so there is intentionally no [http_service] / [[services]]
+# block. (Adding one would make Fly health-check a port the bot never opens and
+# kill the machine.)
+#
+# Build context is the repo root (this file's directory) so knowledge/ and personas/
+# are copied into the image; the Dockerfile itself lives in bot/.
+#
+# First deploy:
+#   fly launch --no-deploy            # pick a UNIQUE app name + region (rewrites `app` below)
+#   fly secrets set \
+#       DISCORD_BOT_TOKEN=... \
+#       OPENROUTER_API_KEY=sk-or-... \
+#       GITHUB_DISPATCH_TOKEN=... \
+#       GITHUB_REPO=youruser/yourfork \
+#       DISCORD_GUILD_ID=...          # optional, for instant slash-command sync
+#   fly deploy
+#
+# Update the knowledge/personas the bot serves after merges: `fly deploy` again
+# (they're baked in at build time).
+
+app = "llm-mmo-bot"          # CHANGE ME — must be globally unique across Fly
+primary_region = "iad"       # pick one near you: https://fly.io/docs/reference/regions/
+
+[build]
+  dockerfile = "bot/Dockerfile"
+
+# One always-on machine. shared-cpu-1x / 256MB is plenty for a gateway bot.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"

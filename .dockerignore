@@ -1,0 +1,27 @@
+# Build context is the repo root (see bot/Dockerfile). Keep secrets, VCS, and
+# caches out of the image — fly deploy / docker build copy the whole context.
+.git/
+.github/
+.claude/
+.agents/
+
+# Secrets — never bake these into an image layer.
+**/.env
+.env
+**/*.secrets.env
+*.secrets.env
+
+# Python / tooling caches and virtualenvs
+**/__pycache__/
+**/*.pyc
+**/.venv/
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# Agent run scratch
+workflows/.work/
+workflows/.upload/
+
+# OS
+.DS_Store

@@ -84,15 +84,48 @@ You should see `Logged in as <bot>` and `Synced N slash command(s)`. In your ser
 
 ## 6. (Production) keep the bot running
 
-The bot holds a persistent gateway connection, so it needs an always-on host. Cheapest paths:
+The bot holds a persistent gateway connection, so it needs an always-on host. Good news: it's
+**outbound-only** (it dials Discord's gateway over a WebSocket and receives @mentions and
+slash-command events on that connection — it does *not* use Discord's "Interactions Endpoint
+URL"). So it needs **no public URL, no open ports, and no reverse proxy**, works behind NAT, and
+fits in **256 MB RAM** since the heavy work runs in GitHub Actions.
 
-- **A VPS / Fly.io / Railway:** run `uv run python -m bot` under a process manager
-  (`systemd`, `pm2`, or the platform's own). A `Dockerfile` stub is in `bot/`.
+### Easiest: Fly.io
+
+A worker-shaped [`fly.toml`](fly.toml) is included at the repo root (no `[http_service]` — that's
+deliberate; the bot opens no port). Install [`flyctl`](https://fly.io/docs/flyctl/install/), then
+from the repo root:
+
+```bash
+fly launch --no-deploy        # pick a globally-unique app name + a region (rewrites `app` in fly.toml)
+fly secrets set \
+    DISCORD_BOT_TOKEN=...      \
+    OPENROUTER_API_KEY=sk-or-... \
+    GITHUB_DISPATCH_TOKEN=...  \
+    GITHUB_REPO=youruser/yourfork \
+    DISCORD_GUILD_ID=...       # optional
+fly deploy                     # builds bot/Dockerfile from the repo root, starts one machine
+fly logs                       # expect: "Logged in as <bot>" + "Synced N slash command(s)"
+```
+
+A single `shared-cpu-1x` / 256 MB machine running 24/7 costs roughly a couple dollars a month.
+
+> **The one gotcha** on any PaaS (Fly, Railway, Render…): deploy this as a **worker / background
+> service**, never a "web service." A web service expects the app to bind an HTTP port and will
+> fail health checks and kill it — the bot never opens one. The bundled `fly.toml` already does
+> the right thing.
+
+### Alternatives
+
+- **Docker on any host** (VPS, home box, Raspberry Pi) — build from the **repo root**:
+  `docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env llm-mmo`
+- **systemd / pm2** — run `uv run python -m bot` under a process manager so it restarts on
+  crash/reboot.
 - **Your laptop**, for testing — it just has to stay awake and online.
 
-The bot reads `knowledge/` from its local checkout. To keep answers fresh after merges, run
-`git pull` periodically (a cron entry, or the built-in `pull_interval_seconds` setting in
-`bot/config.toml`).
+The bot serves the `knowledge/` and `personas/` baked into its image/checkout. To refresh them
+after merges, redeploy (`fly deploy`) — or, on a long-lived checkout, `git pull` periodically (a
+cron entry, or the `pull_interval_seconds` knob in `bot/config.toml`).
 
 ---
 
