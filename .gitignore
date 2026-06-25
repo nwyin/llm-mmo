@@ -19,3 +19,6 @@ workflows/.stderr.log
 
 # OS
 .DS_Store
+
+# Vendored reference clone (not part of the template)
+hermes-agent/
