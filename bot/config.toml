@@ -33,17 +33,59 @@ path = "state.db"
 dir = "../memory"
 # Per-file character limit for bot-editable memory.
 max_chars = 2000
-# Long-term memory is currently SHARED across all users/channels and injected into every
-# prompt. Until per-user memory lands (see issue #2), writes are OFF by default. Set true to
-# let the model edit memory; restrict who can with `admins` (empty = any user when enabled).
+# Operational memory (MEMORY.md, target=agent) is always writable so the bot can build
+# institutional knowledge proactively. `allow_writes` gates ONLY user-profile memory
+# (USER.md, target=user); `admins` further restricts who may write profiles (empty = any
+# user when allow_writes is true). USER.md is shared across the workspace, so keep it off
+# unless you trust everyone.
 allow_writes = false
 admins = []
 
 [skills]
-# Directory for agentskills.io skill packages, relative to this bot dir.
+# Directory for curated, git-tracked agentskills.io skill packages (read-only to the agent).
 dir = "../.agents/skills"
+# Directory for agent-written (runtime) skills — the self-improvement loop's procedural
+# memory. Git-ignored; needs a persistent volume in production.
+runtime_dir = "../memory/skills"
+
+[web]
+# Web research provider: "ddgs" (keyless, default), "tavily", or "exa". For tavily/exa set
+# WEB_SEARCH_PROVIDER plus TAVILY_API_KEY / EXA_API_KEY in .env.
+provider = "ddgs"
+timeout_seconds = 20
+# Max characters returned by web_extract for a single page.
+max_chars = 8000
+# Max results returned by web_search.
+max_results = 5
+
+[recall]
+# Channel-scoped recall is always on. Set true to also offer admins a cross-channel
+# workspace_recall tool (searches every channel's transcripts).
+workspace_enabled = false
+
+[review]
+# Self-improvement loop. After each turn a background fork may save operational memory or
+# update a skill (never user profiles). Set enabled=false to turn it off entirely.
+enabled = true
+# Post a short "🧠 learned: …" notice when the fork saves something.
+notify = true
+# Max tool-iterations for the review fork.
+max_iterations = 4
+# Inject a one-turn reminder to persist memory/skills every N turns (0 disables).
+memory_nudge_interval = 10
+skill_nudge_interval = 10
+
+[cron]
+# Scheduled automations. Admins create jobs in chat ("@bot schedule a daily 9am digest…").
+enabled = true
+# Job store path, relative to this bot dir (defaults next to the transcript store).
+# path = "cron.json"
+# How often the scheduler checks for due jobs.
+tick_seconds = 60
 
 [actions]
 # Slash commands map to action names registered in ../workflows/actions.toml.
 # The bot dispatches these to GitHub; the matching agent does the work + opens a PR.
 save = "save_link"
+# Action used by the agent's save_to_kb tool to persist research/notes via a PR.
+save_note = "save_note"
