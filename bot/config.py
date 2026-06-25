@@ -40,6 +40,8 @@ class Config:
     store_path: Path
     memory_dir: Path
     memory_max_chars: int
+    memory_allow_writes: bool
+    memory_admins: tuple[str, ...]
     skills_dir: Path
     action_map: dict[str, str] = field(default_factory=dict)
 
@@ -94,6 +96,8 @@ def load_config() -> Config:
         store_path=store_path,
         memory_dir=memory_dir,
         memory_max_chars=int(memory.get("max_chars", 2000)),
+        memory_allow_writes=bool(memory.get("allow_writes", False)),
+        memory_admins=tuple(str(admin) for admin in memory.get("admins", [])),
         skills_dir=skills_dir,
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

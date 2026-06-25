@@ -248,7 +248,7 @@ def test_recall_tool_returns_store_hits(tmp_path: Path) -> None:
     store = Store(tmp_path / "state.db")
     try:
         store.log("channel-a", "user", "We picked the launch checklist as the next topic.", now=100.0)
-        recall = build_recall_tool(store)
+        recall = build_recall_tool(store, channel_id="channel-a")
 
         result = recall.handler({"query": "launch"})
 

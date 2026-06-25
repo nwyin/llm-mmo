@@ -116,7 +116,7 @@ def test_preserves_leading_html_comment_header_on_write(tmp_path: Path) -> None:
 
 def test_remember_tool_add_updates_snapshot(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    tool = build_remember_tool(store)
+    tool = build_remember_tool(store, user_id="123", admins=())
 
     result = tool.handler({"action": "add", "target": "agent", "content": "Remember deploy volumes for memory persistence."})
 

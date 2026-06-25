@@ -119,13 +119,15 @@ class Store:
         ).fetchone()
         return None if row is None else float(row["started_at"])
 
-    def search(self, query: str, *, limit: int = 5) -> list[dict[str, Any]]:
+    def search(self, query: str, *, channel_id: str | None = None, limit: int = 5) -> list[dict[str, Any]]:
         if not query.strip() or limit <= 0:
             return []
 
         try:
+            channel_clause = "" if channel_id is None else "AND m.channel_id = ?"
+            params: tuple[Any, ...] = (query, limit) if channel_id is None else (query, channel_id, limit)
             rows = self.conn.execute(
-                """
+                f"""
                 SELECT
                   snippet(messages_fts, 0, '[', ']', ' … ', 12) AS snippet,
                   m.role,
@@ -134,24 +136,27 @@ class Store:
                 FROM messages_fts
                 JOIN messages m ON m.id = messages_fts.rowid
                 WHERE messages_fts MATCH ?
+                  {channel_clause}
                 ORDER BY m.ts DESC
                 LIMIT ?
                 """,
-                (query, limit),
+                params,
             ).fetchall()
         except sqlite3.OperationalError as exc:
             if not _is_fts_query_error(exc):
                 raise
-            rows = self._search_like(query, limit=limit)
+            rows = self._search_like(query, channel_id=channel_id, limit=limit)
 
         return [dict(row) for row in rows]
 
     def close(self) -> None:
         self.conn.close()
 
-    def _search_like(self, query: str, *, limit: int) -> list[sqlite3.Row]:
+    def _search_like(self, query: str, *, channel_id: str | None, limit: int) -> list[sqlite3.Row]:
+        channel_clause = "" if channel_id is None else "AND channel_id = ?"
+        params: tuple[Any, ...] = (f"%{_escape_like(query)}%", limit) if channel_id is None else (f"%{_escape_like(query)}%", channel_id, limit)
         return self.conn.execute(
-            """
+            f"""
             SELECT
               content AS snippet,
               role,
@@ -159,10 +164,11 @@ class Store:
               channel_id
             FROM messages
             WHERE content LIKE ? ESCAPE '\\'
+              {channel_clause}
             ORDER BY ts DESC
             LIMIT ?
             """,
-            (f"%{_escape_like(query)}%", limit),
+            params,
         ).fetchall()
 
 

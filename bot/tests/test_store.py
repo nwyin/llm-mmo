@@ -47,6 +47,21 @@ def test_log_and_search_finds_keyword_with_snippet(tmp_path: Path) -> None:
         store.close()
 
 
+def test_search_channel_scope_isolates_results(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    try:
+        store.log("channel-a", "user", "The orbit keyword belongs in channel a.", now=100.0)
+        store.log("channel-b", "user", "The orbit keyword belongs in channel b.", now=101.0)
+
+        scoped = store.search("orbit", channel_id="channel-a", limit=5)
+        unscoped = store.search("orbit", limit=5)
+
+        assert [row["channel_id"] for row in scoped] == ["channel-a"]
+        assert {row["channel_id"] for row in unscoped} == {"channel-a", "channel-b"}
+    finally:
+        store.close()
+
+
 def test_search_nonsense_returns_nothing_and_fts_metacharacters_do_not_raise(tmp_path: Path) -> None:
     store = Store(tmp_path / "state.db")
     try:

@@ -6,16 +6,15 @@ It deliberately does **no** repo writes itself — that all happens in GitHub Ac
 ## Run it
 
 ```bash
-cd bot
-cp .env.example .env     # fill in DISCORD_BOT_TOKEN, OPENROUTER_API_KEY, GITHUB_DISPATCH_TOKEN, GITHUB_REPO
-uv sync                  # create venv + install deps
-uv run python -m bot     # start
+cp bot/.env.example bot/.env   # fill in DISCORD_BOT_TOKEN, OPENROUTER_API_KEY, GITHUB_DISPATCH_TOKEN, GITHUB_REPO
+uv --project bot sync          # create venv + install deps
+uv --project bot run python -m bot
 ```
 
 Test it works without Discord:
 
 ```bash
-uv run pytest            # unit tests for retrieval + persona loading
+cd bot && uv run pytest  # unit tests for retrieval + persona loading
 ```
 
 ## What each file does
@@ -37,13 +36,13 @@ uv run pytest            # unit tests for retrieval + persona loading
 
 1. A message mentions the bot (optionally prefixed `persona-id:`).
 2. The persona prompt, memory snapshot, skills index, and recent channel history go to the agent loop.
-3. The model calls tools as needed: `search_knowledge`, `read_page`, `delegate`, `recall`, `remember`, and `skill_view`.
+3. The model calls tools as needed: `search_knowledge`, `read_page`, `delegate`, `recall`, optional `remember`, and `skill_view`.
 4. When the loop returns a final answer, the reply is posted back in-channel.
 
 Slash commands: `/ask` runs the same chat loop, `/save` dispatches a GitHub action, and `/new`
 starts a fresh per-channel session while leaving older messages searchable through `recall`.
 
-Config knobs live in `config.toml`: `[chat] max_iterations`, `[store]`, `[memory]`, and `[skills]`.
+Config knobs live in `config.toml`: `[chat] max_iterations`, `[store]`, `[memory] allow_writes/admins`, and `[skills]`.
 
 ## How `/save` works
 
@@ -73,5 +72,5 @@ included:
 docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env llm-mmo
 ```
 
-**systemd / pm2** — run `uv run python -m bot` under your process manager so it restarts on
+**systemd / pm2** — run `uv --project bot run python -m bot` from the repo root under your process manager so it restarts on
 crash/reboot.

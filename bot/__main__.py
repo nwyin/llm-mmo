@@ -42,7 +42,7 @@ class MMOBot(discord.Client):
         self.store = Store(cfg.store_path)
         self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
         self.skills = SkillLibrary(cfg.skills_dir)
-        self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
+        self.base_tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
             build_delegate_tool(
                 self.knowledge,
                 max_files=cfg.max_context_files,
@@ -51,11 +51,15 @@ class MMOBot(discord.Client):
                 model=cfg.chat_model,
                 max_iterations=cfg.max_iterations,
             ),
-            build_recall_tool(self.store),
-            build_remember_tool(self.memory),
             build_skill_view_tool(self.skills),
         ]
         self.tree = app_commands.CommandTree(self)
+
+    def _request_tools(self, *, channel_id: str, user_id: str) -> list[agent.Tool]:
+        tools = [*self.base_tools, build_recall_tool(self.store, channel_id=channel_id)]
+        if self.cfg.memory_allow_writes:
+            tools.append(build_remember_tool(self.memory, user_id=user_id, admins=self.cfg.memory_admins))
+        return tools
 
     async def setup_hook(self) -> None:
         register_commands(self)
@@ -103,7 +107,7 @@ class MMOBot(discord.Client):
                 model=self.cfg.chat_model,
                 system_prompt=self._system_prompt(system_prompt),
                 user_message=question,
-                tools=self.tools,
+                tools=self._request_tools(channel_id=channel_id, user_id=str(message.author.id)),
                 history=history,
                 max_iterations=self.cfg.max_iterations,
             )
@@ -157,7 +161,7 @@ def register_commands(bot: MMOBot) -> None:
                 model=bot.cfg.chat_model,
                 system_prompt=bot._system_prompt(system_prompt),
                 user_message=question,
-                tools=bot.tools,
+                tools=bot._request_tools(channel_id=channel_id, user_id=str(interaction.user.id)),
                 max_iterations=bot.cfg.max_iterations,
             )
             bot._log_store(channel_id, "assistant", reply)

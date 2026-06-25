@@ -123,16 +123,16 @@ def build_skill_view_tool(skills: SkillLibrary) -> Tool:
     )
 
 
-def build_recall_tool(store: Store) -> Tool:
+def build_recall_tool(store: Store, *, channel_id: str) -> Tool:
     def recall(args: dict[str, Any]) -> str:
-        rows = store.search(args["query"])
+        rows = store.search(args["query"], channel_id=channel_id)
         if not rows:
             return "no earlier matches"
         return "\n".join(f"{row['role']} @ {row['ts']}: {row['snippet']}" for row in rows)
 
     return Tool(
         name="recall",
-        description="Search the bot's own past conversations (across sessions) for something discussed before.",
+        description="Search this channel's past conversations (across sessions) for something discussed before.",
         parameters={
             "type": "object",
             "properties": {
@@ -144,8 +144,11 @@ def build_recall_tool(store: Store) -> Tool:
     )
 
 
-def build_remember_tool(memory: MemoryStore) -> Tool:
+def build_remember_tool(memory: MemoryStore, *, user_id: str, admins: tuple[str, ...] | frozenset[str]) -> Tool:
     def remember(args: dict[str, Any]) -> str:
+        if admins and user_id not in admins:
+            return "error: memory writes are restricted to admins for this server."
+
         operations = args.get("operations")
         if operations is not None:
             if not isinstance(operations, list):

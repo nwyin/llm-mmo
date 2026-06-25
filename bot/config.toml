@@ -33,6 +33,11 @@ path = "state.db"
 dir = "../memory"
 # Per-file character limit for bot-editable memory.
 max_chars = 2000
+# Long-term memory is currently SHARED across all users/channels and injected into every
+# prompt. Until per-user memory lands (see issue #2), writes are OFF by default. Set true to
+# let the model edit memory; restrict who can with `admins` (empty = any user when enabled).
+allow_writes = false
+admins = []
 
 [skills]
 # Directory for agentskills.io skill packages, relative to this bot dir.
