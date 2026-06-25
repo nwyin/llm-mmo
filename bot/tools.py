@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -179,6 +180,59 @@ def build_skill_view_tool(skills: SkillLibrary) -> Tool:
     )
 
 
+def build_skill_manage_tool(skills: SkillLibrary, *, on_write: Callable[[], None] | None = None) -> Tool:
+    def skill_manage(args: dict[str, Any]) -> str:
+        action = str(args.get("action", "")).strip()
+        name = str(args.get("name", "")).strip()
+        if not action:
+            return "error: action is required"
+        if not name:
+            return "error: name is required"
+
+        if action == "create":
+            result = skills.create(name, str(args.get("description", "")), str(args.get("body", "")))
+        elif action == "edit":
+            description = args.get("description")
+            body = args.get("body")
+            result = skills.edit(
+                name,
+                description=str(description) if isinstance(description, str) else None,
+                body=str(body) if isinstance(body, str) else None,
+            )
+        elif action == "patch":
+            result = skills.patch(name, str(args.get("old_text", "")), str(args.get("new_text", "")))
+        elif action == "remove":
+            result = skills.remove(name)
+        else:
+            return f"error: unknown skill action: {action}"
+
+        if result.startswith("ok") and on_write is not None:
+            on_write()
+        return result
+
+    return Tool(
+        name="skill_manage",
+        description=(
+            "Create or improve your own reusable skills (procedural memory). Use create for a new skill, edit to rewrite its body, "
+            "patch for a small substring change, remove to delete one. Encode tool/workflow preferences and techniques so future "
+            "sessions start already knowing. Only your runtime skills are writable; curated skills are read-only."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["create", "edit", "patch", "remove"], "description": "Skill operation."},
+                "name": {"type": "string", "description": "Skill name: lowercase letters, digits, hyphens."},
+                "description": {"type": "string", "description": "One-line description (create/edit)."},
+                "body": {"type": "string", "description": "Full markdown body of the skill (create/edit)."},
+                "old_text": {"type": "string", "description": "Unique substring to replace (patch)."},
+                "new_text": {"type": "string", "description": "Replacement text (patch)."},
+            },
+            "required": ["action", "name"],
+        },
+        handler=skill_manage,
+    )
+
+
 def build_recall_tool(store: Store, *, channel_id: str) -> Tool:
     def recall(args: dict[str, Any]) -> str:
         rows = store.search(args["query"], channel_id=channel_id)
@@ -285,11 +339,32 @@ def build_workspace_recall_tool(store: Store) -> Tool:
     )
 
 
-def build_remember_tool(memory: MemoryStore, *, user_id: str, admins: tuple[str, ...] | frozenset[str]) -> Tool:
-    def remember(args: dict[str, Any]) -> str:
-        if admins and user_id not in admins:
-            return "error: memory writes are restricted to admins for this server."
+def build_remember_tool(
+    memory: MemoryStore,
+    *,
+    user_id: str,
+    admins: tuple[str, ...] | frozenset[str],
+    allow_user_writes: bool = True,
+    on_agent_write: Callable[[], None] | None = None,
+) -> Tool:
+    """Proactive long-term memory.
 
+    target=agent (operational notes) is ungated — the agent saves durable team/tool/workflow
+    facts as it works. target=user (per-person profile) stays gated: it requires
+    ``allow_user_writes`` and, if an admin list is set, admin membership.
+    """
+
+    def _user_writes_allowed() -> bool:
+        return allow_user_writes and (not admins or user_id in admins)
+
+    _USER_DENIED = "error: user-profile memory writes are restricted to admins for this server."
+
+    def _signal_agent_write(result: str, touched_agent: bool) -> str:
+        if touched_agent and on_agent_write is not None and result.startswith("ok"):
+            on_agent_write()
+        return result
+
+    def remember(args: dict[str, Any]) -> str:
         operations = args.get("operations")
         if operations is not None:
             if not isinstance(operations, list):
@@ -297,7 +372,10 @@ def build_remember_tool(memory: MemoryStore, *, user_id: str, admins: tuple[str,
             error = _validate_memory_operations(operations)
             if error:
                 return error
-            return memory.apply(operations)
+            targets = {op.get("target") for op in operations}
+            if "user" in targets and not _user_writes_allowed():
+                return _USER_DENIED
+            return _signal_agent_write(memory.apply(operations), "agent" in targets)
 
         action = args.get("action")
         target = args.get("target")
@@ -307,12 +385,14 @@ def build_remember_tool(memory: MemoryStore, *, user_id: str, admins: tuple[str,
             return "error: target is required"
         if target not in TARGETS:
             return f"error: unknown memory target: {target}"
+        if target == "user" and not _user_writes_allowed():
+            return _USER_DENIED
 
         if action == "add":
             content = args.get("content")
             if not isinstance(content, str) or not content.strip():
                 return "error: content is required for add"
-            return memory.add(target, content)
+            return _signal_agent_write(memory.add(target, content), target == "agent")
         if action == "replace":
             old_text = args.get("old_text")
             content = args.get("content")
@@ -320,19 +400,21 @@ def build_remember_tool(memory: MemoryStore, *, user_id: str, admins: tuple[str,
                 return "error: old_text is required for replace"
             if not isinstance(content, str) or not content.strip():
                 return "error: content is required for replace"
-            return memory.replace(target, old_text, content)
+            return _signal_agent_write(memory.replace(target, old_text, content), target == "agent")
         if action == "remove":
             old_text = args.get("old_text")
             if not isinstance(old_text, str) or not old_text:
                 return "error: old_text is required for remove"
-            return memory.remove(target, old_text)
+            return _signal_agent_write(memory.remove(target, old_text), target == "agent")
         return f"error: unknown memory action: {action}"
 
     return Tool(
         name="remember",
         description=(
-            "Save durable long-term facts. Use target=agent for team/project notes and target=user for the user's preferences. "
-            "Prefer operations[] for atomic batches when consolidating or editing several memories. Never save secrets or transient chatter."
+            "Save durable long-term facts proactively as you work. Use target=agent for team/project/tool/workflow notes "
+            "(e.g. 'the team prefers terse answers', 'use uv not pip here') — save these whenever something durable comes up. "
+            "Use target=user for an individual's preferences (admin-gated). "
+            "Prefer operations[] for atomic batches when consolidating. Never save secrets or transient chatter."
         ),
         parameters={
             "type": "object",

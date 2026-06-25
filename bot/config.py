@@ -50,6 +50,12 @@ class Config:
     web_max_results: int
     workspace_recall_enabled: bool
     save_note_action: str
+    skills_runtime_dir: Path
+    review_enabled: bool
+    review_notify: bool
+    review_max_iterations: int
+    nudge_memory_interval: int
+    nudge_skill_interval: int
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -83,6 +89,12 @@ def load_config() -> Config:
     if not skills_dir.is_absolute():
         skills_dir = BOT_DIR / skills_dir
     skills_dir = skills_dir.resolve()
+    # Agent-written (runtime) skills live outside the curated, git-tracked .agents/skills.
+    skills_runtime_dir = Path(skills.get("runtime_dir", REPO_ROOT / "memory" / "skills"))
+    if not skills_runtime_dir.is_absolute():
+        skills_runtime_dir = BOT_DIR / skills_runtime_dir
+    skills_runtime_dir = skills_runtime_dir.resolve()
+    review = raw.get("review", {})
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
@@ -118,5 +130,11 @@ def load_config() -> Config:
         web_max_results=int(web.get("max_results", 5)),
         workspace_recall_enabled=bool(raw.get("recall", {}).get("workspace_enabled", False)),
         save_note_action=str(raw.get("actions", {}).get("save_note", "save_note")),
+        skills_runtime_dir=skills_runtime_dir,
+        review_enabled=bool(review.get("enabled", True)),
+        review_notify=bool(review.get("notify", True)),
+        review_max_iterations=int(review.get("max_iterations", 4)),
+        nudge_memory_interval=int(review.get("memory_nudge_interval", 10)),
+        nudge_skill_interval=int(review.get("skill_nudge_interval", 10)),
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

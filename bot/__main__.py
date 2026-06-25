@@ -9,8 +9,10 @@ Handles two interaction styles:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+from typing import Any
 
 import discord
 from discord import app_commands
@@ -20,7 +22,9 @@ import dispatch
 from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
 from knowledge import KnowledgeBase
 from memory import MemoryStore
+from nudge import NudgeTracker
 from personas import Personas
+from review import run_background_review
 from skills import SkillLibrary
 from store import Store
 from tools import (
@@ -29,11 +33,16 @@ from tools import (
     build_recall_tool,
     build_remember_tool,
     build_save_to_kb_tool,
+    build_skill_manage_tool,
     build_skill_view_tool,
     build_web_tools,
     build_workspace_recall_tool,
 )
 from web import WebClient
+
+# Background-review status notices are posted with this marker so they can be filtered out of
+# conversation history (they are non-conversational bookkeeping, not turns).
+REVIEW_NOTICE_PREFIX = "🧠"
 
 log = logging.getLogger("llm-mmo")
 
@@ -51,7 +60,8 @@ class MMOBot(discord.Client):
         self.personas = Personas(PERSONAS_DIR, cfg.default_persona)
         self.store = Store(cfg.store_path)
         self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
-        self.skills = SkillLibrary(cfg.skills_dir)
+        self.skills = SkillLibrary(cfg.skills_dir, runtime_dir=cfg.skills_runtime_dir)
+        self.trackers: dict[str, NudgeTracker] = {}
         self.web = self._build_web_client(cfg)
         web_tools = build_web_tools(self.web, max_results=cfg.web_max_results) if self.web else []
         self.base_tools = (
@@ -90,7 +100,14 @@ class MMOBot(discord.Client):
         # Mirrors the remember-tool gate: an empty admin list means "anyone".
         return (not self.cfg.memory_admins) or user_id in self.cfg.memory_admins
 
-    def _request_tools(self, *, channel_id: str, user_id: str) -> list[agent.Tool]:
+    def _tracker(self, channel_id: str) -> NudgeTracker:
+        tracker = self.trackers.get(channel_id)
+        if tracker is None:
+            tracker = NudgeTracker(memory_interval=self.cfg.nudge_memory_interval, skill_interval=self.cfg.nudge_skill_interval)
+            self.trackers[channel_id] = tracker
+        return tracker
+
+    def _request_tools(self, *, channel_id: str, user_id: str, tracker: NudgeTracker) -> list[agent.Tool]:
         # Recall is intentionally scoped to the requesting Discord channel.
         tools = [*self.base_tools, build_recall_tool(self.store, channel_id=channel_id)]
         if self.cfg.github_dispatch_token and self.cfg.github_repo:
@@ -106,8 +123,18 @@ class MMOBot(discord.Client):
         # Cross-channel recall is a privileged path: only surface it to admins, and only when enabled.
         if self.cfg.workspace_recall_enabled and self._is_admin(user_id):
             tools.append(build_workspace_recall_tool(self.store))
-        if self.cfg.memory_allow_writes:
-            tools.append(build_remember_tool(self.memory, user_id=user_id, admins=self.cfg.memory_admins))
+        # Proactive operational memory + procedural skills (the in-turn half of self-improvement).
+        # target=agent is ungated; target=user stays gated by memory_allow_writes + admins.
+        tools.append(
+            build_remember_tool(
+                self.memory,
+                user_id=user_id,
+                admins=self.cfg.memory_admins,
+                allow_user_writes=self.cfg.memory_allow_writes,
+                on_agent_write=tracker.note_memory_write,
+            )
+        )
+        tools.append(build_skill_manage_tool(self.skills, on_write=tracker.note_skill_write))
         return tools
 
     async def setup_hook(self) -> None:
@@ -148,25 +175,56 @@ class MMOBot(discord.Client):
 
     async def _answer(self, system_prompt: str, question: str, message: discord.Message) -> str:
         channel_id = str(message.channel.id)
+        user_id = str(message.author.id)
         self._log_store(channel_id, "user", question)
         history = await self._recent_history(message)
+        tracker = self._tracker(channel_id)
+        tracker.record_turn()
         try:
             reply = await agent.run_agent(
                 api_key=self.cfg.openrouter_api_key,
                 model=self.cfg.chat_model,
-                system_prompt=self._system_prompt(system_prompt),
+                system_prompt=self._system_prompt(system_prompt, tracker),
                 user_message=question,
-                tools=self._request_tools(channel_id=channel_id, user_id=str(message.author.id)),
+                tools=self._request_tools(channel_id=channel_id, user_id=user_id, tracker=tracker),
                 history=history,
                 max_iterations=self.cfg.max_iterations,
             )
             self._log_store(channel_id, "assistant", reply)
+            self._spawn_review(history, question, reply, message.channel)
             return reply
         except Exception:  # noqa: BLE001 — surface a friendly error, log the detail
             log.exception("chat reply failed")
             return "⚠️ I hit an error talking to the model. Check the bot logs."
 
-    def _system_prompt(self, persona_prompt: str) -> str:
+    def _spawn_review(self, history: list[dict[str, str]], question: str, reply: str, channel: Any) -> None:
+        """Fire the background-review fork without blocking the reply. Best-effort; never raises."""
+        if not self.cfg.review_enabled:
+            return
+        transcript = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": reply}]
+        asyncio.create_task(self._run_review(transcript, channel))
+
+    async def _run_review(self, transcript: list[dict[str, str]], channel: Any) -> None:
+        try:
+            result = await run_background_review(
+                api_key=self.cfg.openrouter_api_key,
+                model=self.cfg.chat_model,
+                memory=self.memory,
+                skills=self.skills,
+                transcript=transcript,
+                max_iterations=self.cfg.review_max_iterations,
+            )
+        except Exception:  # noqa: BLE001 — the fork is best-effort; the user's reply already went out
+            log.warning("background review failed", exc_info=True)
+            return
+        notice = result.notice()
+        if notice and self.cfg.review_notify and channel is not None:
+            try:
+                await channel.send(f"{REVIEW_NOTICE_PREFIX} _{notice}_")
+            except Exception:  # noqa: BLE001
+                log.warning("could not post review notice", exc_info=True)
+
+    def _system_prompt(self, persona_prompt: str, tracker: NudgeTracker | None = None) -> str:
         prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE
         if self.web is not None:
             prompt += "\n\n" + agent.WEB_TOOL_GUIDANCE
@@ -175,6 +233,8 @@ class MMOBot(discord.Client):
         skills_index = self.skills.index_text()
         if skills_index:
             prompt += "\n\n" + agent.SKILLS_GUIDANCE + "\n\n" + skills_index
+        if tracker is not None and (nudge := tracker.take_nudge()):
+            prompt += "\n\n" + nudge
         return prompt
 
     async def _recent_history(self, message: discord.Message) -> list[dict[str, str]]:
@@ -187,6 +247,9 @@ class MMOBot(discord.Client):
             if started is not None and prior.created_at.timestamp() < started:
                 continue
             if not prior.clean_content:
+                continue
+            # Skip our own non-conversational review notices so they don't pollute context.
+            if prior.author == self.user and prior.clean_content.startswith(REVIEW_NOTICE_PREFIX):
                 continue
             role = "assistant" if prior.author == self.user else "user"
             history.append({"role": role, "content": prior.clean_content})
@@ -208,16 +271,19 @@ def register_commands(bot: MMOBot) -> None:
         _, system_prompt = bot.personas.get(persona)
         channel_id = str(interaction.channel_id)
         bot._log_store(channel_id, "user", question)
+        tracker = bot._tracker(channel_id)
+        tracker.record_turn()
         try:
             reply = await agent.run_agent(
                 api_key=bot.cfg.openrouter_api_key,
                 model=bot.cfg.chat_model,
-                system_prompt=bot._system_prompt(system_prompt),
+                system_prompt=bot._system_prompt(system_prompt, tracker),
                 user_message=question,
-                tools=bot._request_tools(channel_id=channel_id, user_id=str(interaction.user.id)),
+                tools=bot._request_tools(channel_id=channel_id, user_id=str(interaction.user.id), tracker=tracker),
                 max_iterations=bot.cfg.max_iterations,
             )
             bot._log_store(channel_id, "assistant", reply)
+            bot._spawn_review([], question, reply, interaction.channel)
         except Exception:  # noqa: BLE001
             log.exception("/ask failed")
             reply = "⚠️ I hit an error talking to the model. Check the bot logs."

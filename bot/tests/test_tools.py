@@ -24,31 +24,52 @@ def test_recall_tool_is_scoped_to_bound_channel(tmp_path: Path) -> None:
         store.close()
 
 
-def test_remember_tool_restricts_non_admins_before_mutation(tmp_path: Path) -> None:
+def test_remember_tool_user_writes_restricted_to_admins(tmp_path: Path) -> None:
     memory = MemoryStore(tmp_path / "memory", max_chars=2000)
     tool = build_remember_tool(memory, user_id="999", admins=("123",))
 
-    result = tool.handler({"action": "add", "target": "agent", "content": "Only admins can write this."})
+    result = tool.handler({"action": "add", "target": "user", "content": "Only admins can write this profile."})
 
-    assert result == "error: memory writes are restricted to admins for this server."
-    assert "Only admins can write this." not in memory.snapshot()
+    assert result.startswith("error:")
+    assert "Only admins can write this profile." not in memory.snapshot()
 
 
-def test_remember_tool_allows_admins(tmp_path: Path) -> None:
+def test_remember_tool_agent_writes_are_ungated(tmp_path: Path) -> None:
+    # Operational (agent) memory is proactive and open to anyone — that's the whole point.
+    memory = MemoryStore(tmp_path / "memory", max_chars=2000)
+    tool = build_remember_tool(memory, user_id="999", admins=("123",))
+
+    result = tool.handler({"action": "add", "target": "agent", "content": "The team prefers terse answers."})
+
+    assert result.startswith("ok:")
+    assert "The team prefers terse answers." in memory.snapshot()
+
+
+def test_remember_tool_allows_admin_user_writes(tmp_path: Path) -> None:
     memory = MemoryStore(tmp_path / "memory", max_chars=2000)
     tool = build_remember_tool(memory, user_id="123", admins=("123",))
 
-    result = tool.handler({"action": "add", "target": "agent", "content": "Admin-approved memory."})
+    result = tool.handler({"action": "add", "target": "user", "content": "Admin-approved profile fact."})
 
     assert result.startswith("ok:")
-    assert "Admin-approved memory." in memory.snapshot()
+    assert "Admin-approved profile fact." in memory.snapshot()
 
 
-def test_remember_tool_empty_admins_allows_any_user(tmp_path: Path) -> None:
+def test_remember_tool_user_writes_disabled_blocks_even_admin(tmp_path: Path) -> None:
     memory = MemoryStore(tmp_path / "memory", max_chars=2000)
-    tool = build_remember_tool(memory, user_id="999", admins=())
+    tool = build_remember_tool(memory, user_id="123", admins=("123",), allow_user_writes=False)
 
-    result = tool.handler({"action": "add", "target": "agent", "content": "Open write memory."})
+    result = tool.handler({"action": "add", "target": "user", "content": "Should be blocked."})
 
-    assert result.startswith("ok:")
-    assert "Open write memory." in memory.snapshot()
+    assert result.startswith("error:")
+    assert "Should be blocked." not in memory.snapshot()
+
+
+def test_remember_tool_fires_agent_write_callback(tmp_path: Path) -> None:
+    memory = MemoryStore(tmp_path / "memory", max_chars=2000)
+    fired = []
+    tool = build_remember_tool(memory, user_id="1", admins=(), on_agent_write=lambda: fired.append(True))
+
+    tool.handler({"action": "add", "target": "agent", "content": "Durable fact."})
+
+    assert fired == [True]

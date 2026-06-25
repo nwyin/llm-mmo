@@ -11,6 +11,10 @@ __pycache__/
 *.secrets.env
 bot/state.db*
 
+# Agent-written (runtime) skills — the self-improvement loop's procedural memory.
+# Curated skills live in .agents/skills and ARE tracked; these are not.
+memory/skills/
+
 # Working files generated during agent runs
 workflows/.work/
 workflows/.upload/
