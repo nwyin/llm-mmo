@@ -10,12 +10,15 @@ the description, or you invoke it directly (`/creating-workflows` in Claude Code
 
 ## Why the same skill lives in two places
 
-No single directory is read by all harnesses, so each skill is mirrored:
+No single directory is read by all harnesses, so each skill is exposed in two:
 
 | Directory | Read by |
 |-----------|---------|
-| `.claude/skills/<name>/` | Claude Code, opencode |
-| `.agents/skills/<name>/` | Codex, opencode |
+| `.agents/skills/<name>/` | Codex, opencode — **the real files live here** |
+| `.claude/skills/<name>/` | Claude Code, opencode — a **symlink** to the `.agents/` copy |
 
-The two copies are byte-identical and self-contained — when you change a skill, update both. We
-keep a real file in each location (rather than a symlink) so the template stays Windows-clone-safe.
+There's a single source of truth: the skill content lives under `.agents/skills/`, and each
+`.claude/skills/<name>` is a relative symlink to it, so editing one updates both. (The symlink is
+repo-relative, so it survives "Use this template" and clones on macOS/Linux. On Windows, enable
+symlink support — `git config --global core.symlinks true` with Developer Mode on — or replace
+the link with a copy of the `.agents/` file.)
