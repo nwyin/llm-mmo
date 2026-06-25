@@ -32,6 +32,7 @@ class Config:
     max_context_files: int
     max_context_chars: int
     history_turns: int
+    max_iterations: int
     default_persona: str
     persona_by_channel: dict[str, str]
     pull_interval_seconds: int
@@ -67,6 +68,7 @@ def load_config() -> Config:
         max_context_files=int(chat.get("max_context_files", 6)),
         max_context_chars=int(chat.get("max_context_chars", 24000)),
         history_turns=int(chat.get("history_turns", 6)),
+        max_iterations=int(chat.get("max_iterations", 6)),
         default_persona=personas.get("default", "default"),
         persona_by_channel={str(k): str(v) for k, v in personas.get("by_channel", {}).items()},
         pull_interval_seconds=int(knowledge.get("pull_interval_seconds", 0)),

@@ -15,10 +15,12 @@ import re
 import discord
 from discord import app_commands
 
-from . import chat, dispatch
-from .config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
-from .knowledge import KnowledgeBase, format_context
-from .personas import Personas
+import agent
+import dispatch
+from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
+from knowledge import KnowledgeBase
+from personas import Personas
+from tools import build_knowledge_tools
 
 log = logging.getLogger("llm-mmo")
 
@@ -34,6 +36,7 @@ class MMOBot(discord.Client):
         self.cfg = cfg
         self.knowledge = KnowledgeBase(KNOWLEDGE_DIR)
         self.personas = Personas(PERSONAS_DIR, cfg.default_persona)
+        self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars)
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
@@ -73,16 +76,16 @@ class MMOBot(discord.Client):
         await message.reply(reply[:1900])  # Discord's 2000-char message limit, with headroom
 
     async def _answer(self, system_prompt: str, question: str, message: discord.Message) -> str:
-        notes = self.knowledge.search(question, k=self.cfg.max_context_files, max_chars=self.cfg.max_context_chars)
         history = await self._recent_history(message)
         try:
-            return await chat.chat_reply(
+            return await agent.run_agent(
                 api_key=self.cfg.openrouter_api_key,
                 model=self.cfg.chat_model,
-                system_prompt=system_prompt,
-                knowledge_context=format_context(notes),
+                system_prompt=system_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE,
                 user_message=question,
+                tools=self.tools,
                 history=history,
+                max_iterations=self.cfg.max_iterations,
             )
         except Exception:  # noqa: BLE001 — surface a friendly error, log the detail
             log.exception("chat reply failed")
@@ -108,14 +111,14 @@ def register_commands(bot: MMOBot) -> None:
     async def ask(interaction: discord.Interaction, question: str, persona: str | None = None) -> None:
         await interaction.response.defer(thinking=True)
         _, system_prompt = bot.personas.get(persona)
-        notes = bot.knowledge.search(question, k=bot.cfg.max_context_files, max_chars=bot.cfg.max_context_chars)
         try:
-            reply = await chat.chat_reply(
+            reply = await agent.run_agent(
                 api_key=bot.cfg.openrouter_api_key,
                 model=bot.cfg.chat_model,
-                system_prompt=system_prompt,
-                knowledge_context=format_context(notes),
+                system_prompt=system_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE,
                 user_message=question,
+                tools=bot.tools,
+                max_iterations=bot.cfg.max_iterations,
             )
         except Exception:  # noqa: BLE001
             log.exception("/ask failed")

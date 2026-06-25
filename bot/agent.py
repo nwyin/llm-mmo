@@ -10,6 +10,11 @@ from typing import Any
 import httpx
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+KNOWLEDGE_TOOL_GUIDANCE = (
+    "Use the knowledge-base tools when answering questions about the team or project. "
+    "Search before answering, then read the most relevant pages in full before relying on them. "
+    "Cite the file paths you used. If the search finds nothing relevant, say that plainly."
+)
 
 
 @dataclass(frozen=True)

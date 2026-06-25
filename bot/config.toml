@@ -9,6 +9,8 @@ max_context_files = 6
 max_context_chars = 24000
 # How many recent messages of channel history to include for continuity.
 history_turns = 6
+# Max tool-use iterations per reply before the model must answer.
+max_iterations = 6
 
 [personas]
 # Persona id used when none is specified (file in personas/, without .md).

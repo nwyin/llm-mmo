@@ -23,17 +23,18 @@ uv run pytest            # unit tests for retrieval + persona loading
 | File | Role |
 |------|------|
 | `__main__.py` | Discord client: `on_message` (@mentions) + `/ask` and `/save` slash commands. |
+| `agent.py` | Minimal OpenRouter tool-calling loop used for chat replies. |
+| `tools.py` | Knowledge-base tools: `search_knowledge` and `read_page`. |
 | `config.py` | Loads secrets from `.env` and knobs from `config.toml`; finds the repo root. |
 | `knowledge.py` | Loads `knowledge/**.md`, keyword-ranks them for a query. |
 | `personas.py` | Loads `personas/*.md` system prompts. |
-| `chat.py` | One OpenRouter chat-completions call (the only direct LLM call). |
 | `dispatch.py` | Fires `repository_dispatch` to trigger a GitHub action agent. |
 
 ## How chat works
 
 1. A message mentions the bot (optionally prefixed `persona-id:`).
-2. `knowledge.search()` keyword-ranks the notes and returns the top few within a char budget.
-3. The persona prompt + retrieved notes + recent channel history go to OpenRouter.
+2. The persona prompt + recent channel history go to the tool-calling agent loop.
+3. The model uses `search_knowledge` and `read_page` to find and inspect relevant pages.
 4. The reply is posted back in-channel.
 
 ## How `/save` works
