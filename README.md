@@ -29,7 +29,8 @@ Chat also has persistent sessions (`/new`), long-term memory (`memory/MEMORY.md`
 ```
 @ResearchBot what thumbnail styles are working for cooking accounts?
   → bot starts an OpenRouter tool loop
-      → model may call search_knowledge, read_page, delegate, recall, remember, skill_view
+      → model may call search_knowledge, read_page, web_search, web_extract, delegate,
+        recall, workspace_recall, remember, skill_view, skill_manage, save_to_kb, cronjob
   → replies in the channel
 ```
 
@@ -50,12 +51,15 @@ Nothing is written to your knowledge base without a PR. You stay in the loop.
 
 ```
 Discord ──@mention/chat──► bot ──► OpenRouter agent loop ──► reply
-                                  │
+                                  │                              └─► background review ──► memory/skills
                                   ├─► search_knowledge / read_page ──► knowledge/*.md
-                                  ├─► delegate ──► isolated research subagent
-                                  ├─► recall ──► cross-session SQLite FTS
+                                  ├─► web_search / web_extract ──► the public web
+                                  ├─► delegate ──► isolated research subagent (KB + web)
+                                  ├─► recall / workspace_recall ──► SQLite FTS (channel / all)
                                   ├─► remember ──► memory/MEMORY.md + USER.md
-                                  └─► skill_view ──► .agents/skills
+                                  ├─► skill_view / skill_manage ──► .agents/skills + memory/skills
+                                  ├─► save_to_kb ──► repository_dispatch ──► PR (no direct writes)
+                                  └─► cronjob ──► scheduled agent turns ──► channel
         ──/save, /ask────► bot ──► repository_dispatch ─┐
                                                         ▼
                                   .github/workflows/agent-action.yml
@@ -107,9 +111,27 @@ The "how to add a workflow" procedure is also packaged as an [Agent Skill](https
 (`creating-workflows`, mirrored in `.claude/skills/` and `.agents/skills/`) so Claude Code, Codex,
 or opencode running locally in this repo can auto-load it. See [`.claude/skills/README.md`](.claude/skills/README.md).
 
+## Ambient assistant features
+
+Beyond Q&A over the knowledge base, the bot can act as an ambient ops assistant:
+
+- **Web research** — `web_search` + `web_extract` (keyless DuckDuckGo by default; Tavily/Exa
+  via env). `delegate` runs a multi-step KB-and-web research subagent for client/competitor profiles.
+- **Self-improvement** — after each turn a background fork saves durable *operational* memory
+  (`MEMORY.md`) and updates *runtime skills* (`memory/skills/`), nudged periodically. Per-person
+  profiles (`USER.md`) are never auto-built — that stays explicit/admin-gated.
+- **Cross-channel recall** — channel-scoped `recall` by default; admins can opt into
+  `workspace_recall` across every channel.
+- **PR-gated saves** — `save_to_kb` lets the agent persist a finished note, but only by opening
+  a PR. Nothing lands in `knowledge/` unreviewed.
+- **Scheduled automations** — admins set up cron jobs (`daily 9am`, `weekly mon 9am`, …) that run
+  an agent turn unattended and post to a channel (e.g. a daily feedback digest, weekly competitor scan).
+
+See [`bot/config.toml`](bot/config.toml) for the knobs (`[web]`, `[recall]`, `[review]`, `[cron]`).
+
 ## Not included (on purpose)
 
 This is a starting point, not a platform. There is **no** remote file store, vector DB, or
-plugin system yet — knowledge lives as plain markdown in git, retrieval is keyword-based, and
-images are committed straight into the repo. Those are natural next steps, flagged as
-`EXTENSION:` comments where they'd plug in.
+plugin system yet — knowledge lives as plain markdown in git, knowledge-base retrieval is
+keyword-based, and images are committed straight into the repo. Those are natural next steps,
+flagged as `EXTENSION:` comments where they'd plug in.
