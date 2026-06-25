@@ -5,6 +5,11 @@ either a human or an agent can follow it end to end. The `new_action` meta-agent
 (`agents/new_action/PROMPT.md`) reads this file and the `_template` to scaffold new actions on
 its own.
 
+> This guide is also surfaced as an **Agent Skill** (`creating-workflows`) so a local coding
+> agent — Claude Code, Codex, or opencode — auto-loads it when you ask to add a workflow. See
+> [`.claude/skills/README.md`](../.claude/skills/README.md). This file remains the source of
+> truth; the skill just points here.
+
 There are two kinds of workflow, and they differ only in what they're allowed to do:
 
 | Kind | Trigger | Permissions | Output | Runs via |

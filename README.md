@@ -86,6 +86,10 @@ Full step-by-step (Discord app creation, intents, tokens) is in **[SETUP.md](SET
 - **Let an agent build the workflow:** dispatch the `new_action` meta-agent with a plain-English
   description and it scaffolds a new action/reviewer and opens a PR for you to review.
 
+The "how to add a workflow" procedure is also packaged as an [Agent Skill](https://agentskills.io)
+(`creating-workflows`, mirrored in `.claude/skills/` and `.agents/skills/`) so Claude Code, Codex,
+or opencode running locally in this repo can auto-load it. See [`.claude/skills/README.md`](.claude/skills/README.md).
+
 ## Not included (on purpose)
 
 This is a starting point, not a platform. There is **no** remote file store, vector DB, or
