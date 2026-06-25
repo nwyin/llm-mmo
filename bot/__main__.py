@@ -20,7 +20,7 @@ import dispatch
 from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
 from knowledge import KnowledgeBase
 from personas import Personas
-from tools import build_knowledge_tools
+from tools import build_delegate_tool, build_knowledge_tools
 
 log = logging.getLogger("llm-mmo")
 
@@ -36,7 +36,16 @@ class MMOBot(discord.Client):
         self.cfg = cfg
         self.knowledge = KnowledgeBase(KNOWLEDGE_DIR)
         self.personas = Personas(PERSONAS_DIR, cfg.default_persona)
-        self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars)
+        self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
+            build_delegate_tool(
+                self.knowledge,
+                max_files=cfg.max_context_files,
+                max_chars=cfg.max_context_chars,
+                api_key=cfg.openrouter_api_key,
+                model=cfg.chat_model,
+                max_iterations=cfg.max_iterations,
+            )
+        ]
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:

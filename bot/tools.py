@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent import Tool
+from agent import RESEARCH_SUBAGENT_PROMPT, Tool, run_agent
 from knowledge import KnowledgeBase
 
 
@@ -59,3 +59,43 @@ def build_knowledge_tools(kb: KnowledgeBase, *, max_files: int, max_chars: int, 
             handler=read_page,
         ),
     ]
+
+
+def build_delegate_tool(
+    kb: KnowledgeBase,
+    *,
+    max_files: int,
+    max_chars: int,
+    api_key: str,
+    model: str,
+    max_iterations: int,
+) -> Tool:
+    async def delegate(args: dict[str, Any]) -> str:
+        goal = args["goal"]
+        return await run_agent(
+            api_key=api_key,
+            model=model,
+            system_prompt=RESEARCH_SUBAGENT_PROMPT,
+            user_message=goal,
+            tools=build_knowledge_tools(kb, max_files=max_files, max_chars=max_chars),
+            max_iterations=max_iterations,
+        )
+
+    return Tool(
+        name="delegate",
+        description=(
+            "Delegate a focused research question to an isolated subagent that searches/reads the knowledge base and returns a "
+            "brief. Use for multi-step or broad lookups; for a single quick fact, use search_knowledge/read_page directly."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "goal": {
+                    "type": "string",
+                    "description": "Focused research question or task for the isolated knowledge-base subagent.",
+                },
+            },
+            "required": ["goal"],
+        },
+        handler=delegate,
+    )

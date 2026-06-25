@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,11 @@ KNOWLEDGE_TOOL_GUIDANCE = (
     "Search before answering, then read the most relevant pages in full before relying on them. "
     "Cite the file paths you used. If the search finds nothing relevant, say that plainly."
 )
+RESEARCH_SUBAGENT_PROMPT = (
+    "You are an internal research subagent. Research the knowledge base for the user's goal. "
+    "Search first, read the most relevant pages, then return a concise brief with key findings "
+    "and the file paths used. Do not use persona voice."
+)
 
 
 @dataclass(frozen=True)
@@ -22,7 +28,7 @@ class Tool:
     name: str
     description: str
     parameters: dict[str, Any]
-    handler: Callable[[dict[str, Any]], str]
+    handler: Callable[[dict[str, Any]], str | Awaitable[str]]
 
 
 async def complete(
@@ -82,7 +88,11 @@ async def run_agent(
             try:
                 args = json.loads(call.get("function", {}).get("arguments") or "{}")
                 tool = tool_map.get(name)
-                content = f"error: unknown tool {name}" if tool is None else tool.handler(args)
+                if tool is None:
+                    content = f"error: unknown tool {name}"
+                else:
+                    result = tool.handler(args)
+                    content = await result if inspect.isawaitable(result) else result
             except Exception as exc:
                 content = f"error: {exc}"
             messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": content})

@@ -8,7 +8,7 @@ from typing import Any
 
 import agent
 from knowledge import KnowledgeBase
-from tools import build_knowledge_tools
+from tools import build_delegate_tool, build_knowledge_tools
 
 
 def _write(root: Path, rel: str, text: str) -> None:
@@ -114,3 +114,130 @@ def test_read_page_rejects_paths_outside_knowledge_base(tmp_path: Path) -> None:
     read_page = next(tool for tool in tools if tool.name == "read_page")
 
     assert read_page.handler({"path": "../../etc/passwd"}) == "error: path is outside the knowledge base"
+
+
+def test_delegate_runs_isolated_child_and_returns_brief(monkeypatch, tmp_path: Path) -> None:
+    _write(tmp_path, "team/roadmap.md", "# Roadmap\nPhase 2 adds delegate for broad KB research.")
+    kb = KnowledgeBase(tmp_path)
+    tools = build_knowledge_tools(kb, max_files=3, max_chars=10_000) + [
+        build_delegate_tool(
+            kb,
+            max_files=3,
+            max_chars=10_000,
+            api_key="test-key",
+            model="test-model",
+            max_iterations=4,
+        )
+    ]
+    calls: list[dict[str, Any]] = []
+
+    async def fake_complete(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        messages = kwargs["messages"]
+        system_prompt = messages[0]["content"]
+        if system_prompt == agent.RESEARCH_SUBAGENT_PROMPT:
+            if not any(message.get("role") == "tool" for message in messages):
+                return {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "child_search",
+                            "type": "function",
+                            "function": {"name": "search_knowledge", "arguments": '{"query": "phase 2 delegate"}'},
+                        },
+                    ],
+                }
+            return {"role": "assistant", "content": "Key finding: delegate is Phase 2. Paths used: team/roadmap.md."}
+
+        if not any(message.get("role") == "tool" and message.get("tool_call_id") == "parent_delegate" for message in messages):
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "parent_delegate",
+                        "type": "function",
+                        "function": {"name": "delegate", "arguments": '{"goal": "Research Phase 2 delegation."}'},
+                    },
+                ],
+            }
+        return {"role": "assistant", "content": "Phase 2 is delegate-based research: delegate is Phase 2."}
+
+    monkeypatch.setattr(agent, "complete", fake_complete)
+
+    result = asyncio.run(
+        agent.run_agent(
+            api_key="test-key",
+            model="test-model",
+            system_prompt="Answer from knowledge.",
+            user_message="What is Phase 2?",
+            tools=tools,
+        )
+    )
+
+    assert result == "Phase 2 is delegate-based research: delegate is Phase 2."
+    child_calls = [call for call in calls if call["messages"][0]["content"] == agent.RESEARCH_SUBAGENT_PROMPT]
+    assert child_calls
+    assert all(tool["function"]["name"] != "delegate" for call in child_calls for tool in call["tools"])
+    assert any(
+        message.get("role") == "tool" and message.get("tool_call_id") == "child_search" for call in child_calls for message in call["messages"]
+    )
+    parent_final_messages = calls[-1]["messages"]
+    assert any(
+        message.get("role") == "tool"
+        and message.get("tool_call_id") == "parent_delegate"
+        and "Paths used: team/roadmap.md" in message.get("content", "")
+        for message in parent_final_messages
+    )
+
+
+def test_run_agent_awaits_async_tool_handler(monkeypatch) -> None:
+    async def async_handler(args: dict[str, Any]) -> str:
+        return f"async value: {args['value']}"
+
+    tool = agent.Tool(
+        name="async_echo",
+        description="Return a value asynchronously.",
+        parameters={
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+        },
+        handler=async_handler,
+    )
+    calls: list[list[dict[str, Any]]] = []
+
+    async def fake_complete(**kwargs: Any) -> dict[str, Any]:
+        calls.append(list(kwargs["messages"]))
+        if len(calls) == 1:
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_async",
+                        "type": "function",
+                        "function": {"name": "async_echo", "arguments": '{"value": "ok"}'},
+                    },
+                ],
+            }
+        return {"role": "assistant", "content": "The tool returned async value: ok."}
+
+    monkeypatch.setattr(agent, "complete", fake_complete)
+
+    result = asyncio.run(
+        agent.run_agent(
+            api_key="test-key",
+            model="test-model",
+            system_prompt="Use the tool.",
+            user_message="Echo.",
+            tools=[tool],
+        )
+    )
+
+    assert result == "The tool returned async value: ok."
+    assert any(
+        message["role"] == "tool" and message["tool_call_id"] == "call_async" and message["content"] == "async value: ok"
+        for message in calls[1]
+    )
