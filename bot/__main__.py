@@ -19,9 +19,10 @@ import agent
 import dispatch
 from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
 from knowledge import KnowledgeBase
+from memory import MemoryStore
 from personas import Personas
 from store import Store
-from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool
+from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool, build_remember_tool
 
 log = logging.getLogger("llm-mmo")
 
@@ -38,6 +39,7 @@ class MMOBot(discord.Client):
         self.knowledge = KnowledgeBase(KNOWLEDGE_DIR)
         self.personas = Personas(PERSONAS_DIR, cfg.default_persona)
         self.store = Store(cfg.store_path)
+        self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
         self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
             build_delegate_tool(
                 self.knowledge,
@@ -48,6 +50,7 @@ class MMOBot(discord.Client):
                 max_iterations=cfg.max_iterations,
             ),
             build_recall_tool(self.store),
+            build_remember_tool(self.memory),
         ]
         self.tree = app_commands.CommandTree(self)
 
@@ -95,7 +98,7 @@ class MMOBot(discord.Client):
             reply = await agent.run_agent(
                 api_key=self.cfg.openrouter_api_key,
                 model=self.cfg.chat_model,
-                system_prompt=system_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE,
+                system_prompt=self._system_prompt(system_prompt),
                 user_message=question,
                 tools=self.tools,
                 history=history,
@@ -106,6 +109,9 @@ class MMOBot(discord.Client):
         except Exception:  # noqa: BLE001 — surface a friendly error, log the detail
             log.exception("chat reply failed")
             return "⚠️ I hit an error talking to the model. Check the bot logs."
+
+    def _system_prompt(self, persona_prompt: str) -> str:
+        return persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE + "\n\n" + agent.MEMORY_GUIDANCE + "\n\n" + self.memory.snapshot()
 
     async def _recent_history(self, message: discord.Message) -> list[dict[str, str]]:
         turns = self.cfg.history_turns
@@ -142,7 +148,7 @@ def register_commands(bot: MMOBot) -> None:
             reply = await agent.run_agent(
                 api_key=bot.cfg.openrouter_api_key,
                 model=bot.cfg.chat_model,
-                system_prompt=system_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE,
+                system_prompt=bot._system_prompt(system_prompt),
                 user_message=question,
                 tools=bot.tools,
                 max_iterations=bot.cfg.max_iterations,

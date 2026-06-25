@@ -16,6 +16,10 @@ KNOWLEDGE_TOOL_GUIDANCE = (
     "Search before answering, then read the most relevant pages in full before relying on them. "
     "Cite the file paths you used. If the search finds nothing relevant, say that plainly."
 )
+MEMORY_GUIDANCE = (
+    "You have long-term memory shown above. Proactively save durable facts about the team, project, or user with remember. "
+    "Use agent for team/project notes and user for the user's preferences. Never save secrets or transient chatter."
+)
 RESEARCH_SUBAGENT_PROMPT = (
     "You are an internal research subagent. Research the knowledge base for the user's goal. "
     "Search first, read the most relevant pages, then return a concise brief with key findings "

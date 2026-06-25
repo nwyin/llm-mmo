@@ -37,6 +37,8 @@ class Config:
     persona_by_channel: dict[str, str]
     pull_interval_seconds: int
     store_path: Path
+    memory_dir: Path
+    memory_max_chars: int
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -60,6 +62,11 @@ def load_config() -> Config:
     store_path = Path(store.get("path", "state.db"))
     if not store_path.is_absolute():
         store_path = BOT_DIR / store_path
+    memory = raw.get("memory", {})
+    memory_dir = Path(memory.get("dir", REPO_ROOT / "memory"))
+    if not memory_dir.is_absolute():
+        memory_dir = BOT_DIR / memory_dir
+    memory_dir = memory_dir.resolve()
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
@@ -78,5 +85,7 @@ def load_config() -> Config:
         persona_by_channel={str(k): str(v) for k, v in personas.get("by_channel", {}).items()},
         pull_interval_seconds=int(knowledge.get("pull_interval_seconds", 0)),
         store_path=store_path,
+        memory_dir=memory_dir,
+        memory_max_chars=int(memory.get("max_chars", 2000)),
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )
