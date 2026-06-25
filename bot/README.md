@@ -22,9 +22,12 @@ uv run pytest            # unit tests for retrieval + persona loading
 
 | File | Role |
 |------|------|
-| `__main__.py` | Discord client: `on_message` (@mentions) + `/ask` and `/save` slash commands. |
+| `__main__.py` | Discord client: `on_message` (@mentions) + `/ask`, `/save`, and `/new` slash commands. |
 | `agent.py` | Minimal OpenRouter tool-calling loop used for chat replies. |
-| `tools.py` | Knowledge-base tools: `search_knowledge` and `read_page`. |
+| `tools.py` | Tool definitions for knowledge search/read, delegation, recall, memory, and skill loading. |
+| `store.py` | SQLite session/message store plus FTS-backed cross-session recall. |
+| `memory.py` | Long-term markdown memory files exposed through the `remember` tool. |
+| `skills.py` | Indexes `.agents/skills` and serves full skill text through `skill_view`. |
 | `config.py` | Loads secrets from `.env` and knobs from `config.toml`; finds the repo root. |
 | `knowledge.py` | Loads `knowledge/**.md`, keyword-ranks them for a query. |
 | `personas.py` | Loads `personas/*.md` system prompts. |
@@ -33,9 +36,14 @@ uv run pytest            # unit tests for retrieval + persona loading
 ## How chat works
 
 1. A message mentions the bot (optionally prefixed `persona-id:`).
-2. The persona prompt + recent channel history go to the tool-calling agent loop.
-3. The model uses `search_knowledge` and `read_page` to find and inspect relevant pages.
-4. The reply is posted back in-channel.
+2. The persona prompt, memory snapshot, skills index, and recent channel history go to the agent loop.
+3. The model calls tools as needed: `search_knowledge`, `read_page`, `delegate`, `recall`, `remember`, and `skill_view`.
+4. When the loop returns a final answer, the reply is posted back in-channel.
+
+Slash commands: `/ask` runs the same chat loop, `/save` dispatches a GitHub action, and `/new`
+starts a fresh per-channel session while leaving older messages searchable through `recall`.
+
+Config knobs live in `config.toml`: `[chat] max_iterations`, `[store]`, `[memory]`, and `[skills]`.
 
 ## How `/save` works
 

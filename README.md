@@ -16,9 +16,11 @@ talk to that turns Discord messages into reviewable pull requests.
 |-------|----------|--------------|
 | **Knowledge base** | `knowledge/**.md` | Your notes. The bot reads these to answer questions. |
 | **Personas** | `personas/*.md` | Chatbot characters (system prompts). Tag one in Discord to talk to it. |
-| **Discord bot** | `bot/` | Listens for `@mentions` and slash commands. Answers chat inline; dispatches actions to GitHub. |
+| **Discord bot** | `bot/` | Listens for `@mentions` and slash commands. Runs a tool-calling chat loop; dispatches actions to GitHub. |
 | **Actions** | `workflows/agents/<name>/` | Agents that *do work* (fetch a thumbnail, write a note) and open a PR. |
 | **Review workflows** | `workflows/agents/review/`, `.github/workflows/review.yml` | Agents that review PRs to the knowledge base. Routed by PR label. |
+
+Chat also has persistent sessions (`/new`), long-term memory (`memory/MEMORY.md` + `memory/USER.md`), and repo skills from `.agents/skills`.
 
 ## The two flows
 
@@ -26,7 +28,9 @@ talk to that turns Discord messages into reviewable pull requests.
 
 ```
 @ResearchBot what thumbnail styles are working for cooking accounts?
-  → bot loads matching knowledge/*.md → OpenRouter → replies in the channel
+  → bot starts an OpenRouter tool loop
+      → model may call search_knowledge, read_page, delegate, recall, remember, skill_view
+  → replies in the channel
 ```
 
 **2. Action (async, opens a PR)**
@@ -45,7 +49,13 @@ Nothing is written to your knowledge base without a PR. You stay in the loop.
 ## Architecture
 
 ```
-Discord ──@mention/chat──► bot ──► OpenRouter ──► reply (reads knowledge/)
+Discord ──@mention/chat──► bot ──► OpenRouter agent loop ──► reply
+                                  │
+                                  ├─► search_knowledge / read_page ──► knowledge/*.md
+                                  ├─► delegate ──► isolated research subagent
+                                  ├─► recall ──► cross-session SQLite FTS
+                                  ├─► remember ──► memory/MEMORY.md + USER.md
+                                  └─► skill_view ──► .agents/skills
         ──/save, /ask────► bot ──► repository_dispatch ─┐
                                                         ▼
                                   .github/workflows/agent-action.yml

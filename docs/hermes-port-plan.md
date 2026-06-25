@@ -135,14 +135,15 @@ From `plugins/platforms/discord/adapter.py`, worth lifting as patterns (not code
 
 ## Proposed build order
 
-1. **Phase 1 — the loop.** `bot/agent.py`: tool-calling loop + iteration budget + tool dict;
+1. **[x] Phase 1 — the loop.** `bot/agent.py`: tool-calling loop + iteration budget + tool dict;
    tools `search_knowledge`, `read_page`. Rewire `__main__.py`'s `_answer`/`/ask` to use it.
    *This alone delivers the agentic-research upgrade you originally asked for.*
-2. **Phase 2 — delegation.** `delegate` tool → the research subagent as an isolated child.
-3. **Phase 3 — sessions + context.** SQLite sessions/messages + FTS5 + `recall` tool + `/new` +
+2. **[x] Phase 2 — delegation.** `delegate` tool → the research subagent as an isolated child.
+3. **[x] Phase 3 — sessions + context.** SQLite sessions/messages + FTS5 + `recall` tool + `/new` +
    compression.
-4. **Phase 4 — memory.** Flat `memory/` files + `remember` tool + nudge.
-5. **Phase 5 — skills.** Index our existing `.agents/skills/` into the system prompt +
+   Context compression was intentionally deferred because recent history is already capped.
+4. **[x] Phase 4 — memory.** Flat `memory/` files + `remember` tool + nudge.
+5. **[x] Phase 5 — skills.** Index our existing `.agents/skills/` into the system prompt +
    `skill_view` (+ optional `/learn`).
 
 Each phase is independently shippable and leaves the bot working. Phase 1 is the foundation and
