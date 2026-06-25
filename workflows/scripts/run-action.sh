@@ -36,14 +36,23 @@ if [ ! -f "$PROMPT_DIR/PROMPT.md" ]; then
   exit 1
 fi
 
-# Resolve the agent name + human title from actions.toml (default: agent id == action id).
-read -r AGENT TITLE < <(python3 - "$WORKFLOWS_DIR/actions.toml" "$ACTION" <<'PY'
+# Resolve the agent name, human title, and commit paths from actions.toml.
+# Defaults: agent id == action id; add_paths == "knowledge/". Tab-separated so the
+# title may contain spaces.
+IFS=$'\t' read -r AGENT TITLE ADD_PATHS < <(python3 - "$WORKFLOWS_DIR/actions.toml" "$ACTION" <<'PY'
 import sys, tomllib
 cfg = tomllib.load(open(sys.argv[1], "rb"))
 entry = cfg.get(sys.argv[2], {})
-print(entry.get("agent", sys.argv[2]), entry.get("title", sys.argv[2]))
+agent = entry.get("agent", sys.argv[2])
+title = entry.get("title", sys.argv[2])
+# add_paths may be a string or a list; normalize to a space-separated string.
+paths = entry.get("add_paths", "knowledge/")
+if isinstance(paths, list):
+    paths = " ".join(paths)
+print("\t".join([agent, title, paths]))
 PY
 )
+ADD_PATHS="${ADD_PATHS:-knowledge/}"
 
 # Apply model override (opencode reads OPENCODE_AGENT_<NAME_UPPER>_MODEL).
 if [ -n "${AGENT_MODEL:-}" ]; then
@@ -104,7 +113,8 @@ PR_BODY=$(grep -v '^PR_TITLE:' "$OUTPUT_FILE")
 # Commit & open a PR — only if the agent actually changed files.
 # ---------------------------------------------------------------------------
 cd "$REPO_ROOT"
-if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard knowledge/)" ]; then
+# shellcheck disable=SC2086  # ADD_PATHS is intentionally word-split into multiple paths.
+if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard $ADD_PATHS)" ]; then
   echo "::warning::Agent made no file changes — nothing to commit. Skipping PR."
   echo "AGENT_SUMMARY<<EOF" >> "${GITHUB_OUTPUT:-/dev/null}"
   echo "No changes were produced for action '$ACTION'. $PR_BODY" >> "${GITHUB_OUTPUT:-/dev/null}"
@@ -116,7 +126,8 @@ BRANCH="action/${ACTION}-${GITHUB_RUN_ID:-$(date +%s)}"
 git config user.name "llm-mmo-bot"
 git config user.email "llm-mmo-bot@users.noreply.github.com"
 git switch -c "$BRANCH"
-git add -A knowledge/
+# shellcheck disable=SC2086  # ADD_PATHS is intentionally word-split into multiple paths.
+git add -A $ADD_PATHS
 git commit -m "$PR_TITLE
 
 Action: $ACTION (requested by ${REQUESTED_BY:-unknown})"

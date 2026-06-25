@@ -9,8 +9,11 @@ markdown knowledge base.
 
 | Path | What |
 |------|------|
+| `AUTHORING.md` | **The spec for adding a workflow.** Read this before adding an action or reviewer. |
 | `opencode.json` | Declares the agents (model, prompt file, permissions). |
 | `agents/SHARED.md` | Rules injected into **every** agent (via opencode `instructions`). |
+| `agents/_template/` | Scaffold you copy to start a new action (not a registered agent). |
+| `agents/new_action/` | Meta-agent: scaffolds a brand-new workflow from a description, opens a PR. |
 | `agents/<id>/PROMPT.md` | A single agent's system prompt. |
 | `actions.toml` | Registry: which agent each dispatchable action runs. |
 | `review-routing.toml` | Maps PR labels → reviewer agents. |
@@ -43,25 +46,37 @@ pull_request
       → post-comment.py
 ```
 
-## Add a new action
+## Adding a workflow
 
-1. `cp -r agents/save_link agents/<id>` and rewrite `PROMPT.md` for the new task. End the
-   prompt by telling the agent to emit a `PR_TITLE:` line (run-action.sh parses it).
-2. Add the agent to `opencode.json` with the permissions it needs (actions that write files
-   need `write`/`edit`/`bash`; keep everything else denied).
-3. Register it in `actions.toml`.
-4. (Optional) Expose it as a slash command in `bot/config.toml` `[actions]`, or have a persona
-   tell users to invoke it.
+Full instructions, copy-paste snippets, and the invariants live in
+**[AUTHORING.md](AUTHORING.md)**. The short version:
 
-## Add a new reviewer / route reviews by label
+**New action** (does work → opens a PR):
 
-1. Create `agents/<id>/PROMPT.md` (read-only reviewer; emit a `## Knowledge Review` heading).
+1. `cp -r agents/_template agents/<id>` and rewrite `PROMPT.md`. End it by telling the agent to
+   emit a `PR_TITLE:` line (run-action.sh parses it).
+2. Add the agent to `opencode.json` with the permissions it needs (writers get
+   `write`/`edit`/`bash`; everything else denied).
+3. Register it in `actions.toml`. If it writes outside `knowledge/`, set `add_paths`.
+4. (Optional) Expose it as a slash command in `bot/config.toml` `[actions]`.
+
+**New reviewer** (read-only → comments on PRs):
+
+1. Create `agents/<id>/PROMPT.md` (emit a `## Knowledge Review` heading verbatim).
 2. Add the agent to `opencode.json` (read/grep/glob allowed; write/bash denied).
 3. Add a rule to `review-routing.toml`: `[labels.<label>] agent = "<id>"`.
 
-Now any PR carrying that label is reviewed by that agent. PRs with no matching label get the
-`[default]` reviewer. Multiple matching labels run multiple reviewers and combine their
-comments.
+PRs carrying that label get that reviewer; PRs with no matching label get the `[default]`
+reviewer. Multiple matching labels run multiple reviewers and combine their comments.
+
+## Let an agent add it for you
+
+The **`new_action`** meta-agent does all of the above from a plain-English description. Dispatch
+the `new_action` action with the description in the `note` field (e.g. *"add an action that
+saves a competitor's landing page as a note under knowledge/competitors/"*) and it scaffolds the
+prompt, edits `opencode.json` + the registry, self-checks the JSON/TOML, and opens a PR you
+review like any other. It reads `AUTHORING.md` and `agents/_template/` to do this — so keeping
+those accurate keeps the meta-agent accurate.
 
 ## Why a PAT for opening PRs?
 

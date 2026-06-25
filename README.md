@@ -78,11 +78,13 @@ Full step-by-step (Discord app creation, intents, tokens) is in **[SETUP.md](SET
 ## Extending it
 
 - **New persona:** add `personas/my-bot.md`. It's a system prompt. That's the whole step.
-- **New action:** copy `workflows/agents/save_link/` to `workflows/agents/<name>/`, edit
-  `PROMPT.md`, register it in `workflows/actions.toml`. See
-  [`workflows/README.md`](workflows/README.md).
+- **New action:** copy `workflows/agents/_template/` to `workflows/agents/<name>/`, edit
+  `PROMPT.md`, register it in `workflows/actions.toml`. The full spec with copy-paste snippets
+  is [`workflows/AUTHORING.md`](workflows/AUTHORING.md).
 - **New review behavior:** edit `workflows/agents/review/PROMPT.md`, or add a label route in
   `workflows/review-routing.toml` (e.g. PRs labeled `social` get the `thumbnail_reviewer`).
+- **Let an agent build the workflow:** dispatch the `new_action` meta-agent with a plain-English
+  description and it scaffolds a new action/reviewer and opens a PR for you to review.
 
 ## Not included (on purpose)
 

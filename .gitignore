@@ -11,6 +11,7 @@ __pycache__/
 
 # Working files generated during agent runs
 workflows/.work/
+workflows/.upload/
 workflows/.prompt.md
 workflows/.output.md
 workflows/.raw.jsonl

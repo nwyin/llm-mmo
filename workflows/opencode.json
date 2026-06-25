@@ -36,6 +36,20 @@
         "edit": "deny",
         "write": "deny"
       }
+    },
+    "new_action": {
+      "mode": "primary",
+      "model": "openrouter/anthropic/claude-sonnet-4.6",
+      "prompt": "{file:./agents/new_action/PROMPT.md}",
+      "steps": 40,
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "bash": "allow",
+        "edit": "allow",
+        "write": "allow"
+      }
     }
   },
   "permission": {

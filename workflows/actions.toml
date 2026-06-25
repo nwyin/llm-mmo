@@ -4,15 +4,29 @@
 # runs the named agent, then run-action.sh commits whatever files the agent created and
 # opens a PR.
 #
-# To add an action:
-#   1. Create workflows/agents/<id>/PROMPT.md  (the agent's system prompt).
+# To add an action (full spec + snippets in workflows/AUTHORING.md):
+#   1. Create workflows/agents/<id>/PROMPT.md  (copy agents/_template/).
 #   2. Add the agent to workflows/opencode.json (give it write/bash/webfetch permission).
 #   3. Register it here.
 #   4. (Optional) Add a slash command for it in bot/config.toml under [actions].
+#
+# Fields per action:
+#   agent      — opencode agent to run (defaults to the action id)
+#   title      — human label; PR-title fallback + Discord notification
+#   target_dir — informational hint to the agent about where it writes
+#   add_paths  — paths run-action.sh `git add`s and checks for changes.
+#                Default "knowledge/". Set this if the action writes elsewhere.
+#                String or list, e.g. "workflows/ knowledge/".
 
 [save_link]
 agent = "save_link"
-# Human-readable, used in the PR title prefix and Discord notification.
 title = "Save link"
-# Where this action tends to write (informational; the agent decides the real path).
 target_dir = "knowledge/"
+
+# Meta-action: scaffolds a brand-new workflow from a plain-English description (in `note`)
+# and opens a PR. Writes into workflows/, so it must add that path, not knowledge/.
+[new_action]
+agent = "new_action"
+title = "Add workflow"
+target_dir = "workflows/"
+add_paths = "workflows/"
