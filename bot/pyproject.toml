@@ -1,0 +1,27 @@
+[project]
+name = "llm-mmo"
+version = "0.1.0"
+description = "Discord bot front-end for a markdown knowledge base + GitHub action agents"
+requires-python = ">=3.12"
+dependencies = [
+    "discord.py>=2.4",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.ruff]
+line-length = 144
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Make the standalone bot modules importable when running pytest from bot/.
+pythonpath = ["."]

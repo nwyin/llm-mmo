@@ -1,0 +1,21 @@
+# Review routing: map PR labels to reviewer agents.
+#
+# When a PR is opened/updated/labeled, review.yml looks at its labels. For each label that
+# matches a rule here, it runs that agent. If no label matches, the [default] agent runs.
+#
+# "reviews tagged with <X> should use agent Y" is exactly this table.
+#
+# Each agent name must exist in workflows/opencode.json. To add a specialized reviewer:
+#   1. Create workflows/agents/<id>/PROMPT.md.
+#   2. Add the agent to workflows/opencode.json (read-only permission).
+#   3. Add a label → agent rule here.
+
+[default]
+agent = "reviewer"
+
+# Example specialized routes (uncomment + add the agents to opencode.json to use):
+# [labels.social]
+# agent = "thumbnail_reviewer"
+#
+# [labels.competitors]
+# agent = "competitor_reviewer"

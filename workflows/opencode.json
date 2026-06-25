@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["./agents/SHARED.md"],
+  "provider": {
+    "openrouter": {
+      "name": "OpenRouter"
+    }
+  },
+  "agent": {
+    "save_link": {
+      "mode": "primary",
+      "model": "openrouter/anthropic/claude-sonnet-4.6",
+      "prompt": "{file:./agents/save_link/PROMPT.md}",
+      "steps": 30,
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "webfetch": "allow",
+        "bash": "allow",
+        "edit": "allow",
+        "write": "allow"
+      }
+    },
+    "reviewer": {
+      "mode": "primary",
+      "model": "openrouter/anthropic/claude-sonnet-4.6",
+      "prompt": "{file:./agents/review/PROMPT.md}",
+      "steps": 20,
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "websearch": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "write": "deny"
+      }
+    }
+  },
+  "permission": {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "edit": "deny",
+    "write": "deny",
+    "bash": "deny"
+  }
+}

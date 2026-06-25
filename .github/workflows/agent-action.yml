@@ -1,0 +1,94 @@
+# Runs an action agent in response to a repository_dispatch from the Discord bot.
+# The bot sends: event_type "agent-action", client_payload { action, link, note, requested_by, channel_id }.
+name: Agent Action
+
+on:
+  repository_dispatch:
+    types: [agent-action]
+
+# Allow the workflow to commit a branch and open a PR.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Serialize per-action so two saves don't race on the same branch namespace.
+  group: agent-action-${{ github.event.client_payload.action }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  run-action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check API key
+        id: check_key
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY secret not set. Add it under Settings → Secrets → Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js (for opencode)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install opencode
+        # Pinned for a stable --format json event shape (extract-output.py parses it).
+        run: npm install -g opencode-ai@1.16.2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run action agent
+        id: action
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Prefer a PAT so the PR triggers the review workflow; fall back to the built-in token.
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || '' }}
+          ACTION_TIMEOUT: ${{ vars.ACTION_TIMEOUT || '600' }}
+          LINK: ${{ github.event.client_payload.link }}
+          NOTE: ${{ github.event.client_payload.note }}
+          REQUESTED_BY: ${{ github.event.client_payload.requested_by }}
+          CHANNEL_ID: ${{ github.event.client_payload.channel_id }}
+        run: |
+          chmod +x workflows/scripts/run-action.sh
+          workflows/scripts/run-action.sh "${{ github.event.client_payload.action }}"
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ "${{ steps.action.outcome }}" = "success" ] && [ -n "${{ steps.action.outputs.PR_URL }}" ]; then
+            python3 workflows/scripts/notify-discord.py "✅ **${{ steps.action.outputs.PR_TITLE }}** — PR ready for review: ${{ steps.action.outputs.PR_URL }}"
+          elif [ "${{ steps.action.outcome }}" != "success" ]; then
+            python3 workflows/scripts/notify-discord.py "⚠️ Action \`${{ github.event.client_payload.action }}\` failed. Check the Actions logs."
+          fi
+
+      - name: Redact and upload logs
+        if: always()
+        run: |
+          REDACT='s/(sk-or-[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{20,}|Bearer [A-Za-z0-9._-]+)/[redacted]/g'
+          mkdir -p workflows/.upload
+          for f in workflows/.work/raw.jsonl workflows/.work/stderr.log workflows/.work/output.md; do
+            [ -f "$f" ] && sed -E "$REDACT" "$f" > "workflows/.upload/$(basename "$f")" || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: action-logs-${{ github.run_id }}
+          path: workflows/.upload/
+          retention-days: 7
+          if-no-files-found: ignore

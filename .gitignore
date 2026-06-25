@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# Secrets / local env
+.env
+*.secrets.env
+
+# Working files generated during agent runs
+workflows/.work/
+workflows/.prompt.md
+workflows/.output.md
+workflows/.raw.jsonl
+workflows/.stderr.log
+
+# OS
+.DS_Store

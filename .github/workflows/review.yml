@@ -1,0 +1,85 @@
+# Reviews PRs to the knowledge base with label-routed agent(s).
+name: Knowledge Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip drafts and bots.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check API key
+        id: check_key
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::warning::OPENROUTER_API_KEY not set — skipping Knowledge review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check_key.outputs.skip != 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js (for opencode)
+        if: steps.check_key.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install opencode
+        if: steps.check_key.outputs.skip != 'true'
+        run: npm install -g opencode-ai@1.16.2
+
+      - uses: actions/setup-python@v5
+        if: steps.check_key.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Run Knowledge review
+        if: steps.check_key.outputs.skip != 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || '' }}
+          MAX_REVIEW_TURNS: ${{ vars.MAX_REVIEW_TURNS || '2' }}
+          REVIEW_TIMEOUT: ${{ vars.REVIEW_TIMEOUT || '600' }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          chmod +x workflows/scripts/run-review.sh
+          workflows/scripts/run-review.sh \
+            "${{ github.event.pull_request.number }}" \
+            "${{ github.repository }}" \
+            "${{ github.event.pull_request.base.ref }}"
+
+      - name: Redact and upload logs
+        if: always() && steps.check_key.outputs.skip != 'true'
+        run: |
+          REDACT='s/(sk-or-[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{20,}|Bearer [A-Za-z0-9._-]+)/[redacted]/g'
+          mkdir -p workflows/.upload
+          for f in workflows/.work/*.jsonl workflows/.work/*.log workflows/.work/*.md; do
+            [ -f "$f" ] && sed -E "$REDACT" "$f" > "workflows/.upload/$(basename "$f")" || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.check_key.outputs.skip != 'true'
+        with:
+          name: review-logs-pr-${{ github.event.pull_request.number }}
+          path: workflows/.upload/
+          retention-days: 7
+          if-no-files-found: ignore

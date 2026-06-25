@@ -1,0 +1,18 @@
+# Action registry. Each action maps a dispatched job to an opencode agent.
+#
+# An action is triggered from Discord (via repository_dispatch with this `action` name),
+# runs the named agent, then run-action.sh commits whatever files the agent created and
+# opens a PR.
+#
+# To add an action:
+#   1. Create workflows/agents/<id>/PROMPT.md  (the agent's system prompt).
+#   2. Add the agent to workflows/opencode.json (give it write/bash/webfetch permission).
+#   3. Register it here.
+#   4. (Optional) Add a slash command for it in bot/config.toml under [actions].
+
+[save_link]
+agent = "save_link"
+# Human-readable, used in the PR title prefix and Discord notification.
+title = "Save link"
+# Where this action tends to write (informational; the agent decides the real path).
+target_dir = "knowledge/"

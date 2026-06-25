@@ -1,0 +1,27 @@
+# Bot configuration. Non-secret knobs live here; secrets live in .env.
+
+[chat]
+# OpenRouter model id used for chat replies. Any model on openrouter.ai works.
+model = "anthropic/claude-sonnet-4.6"
+# Max knowledge files injected as context per reply.
+max_context_files = 6
+# Hard cap on characters of knowledge context (keeps token cost bounded).
+max_context_chars = 24000
+# How many recent messages of channel history to include for continuity.
+history_turns = 6
+
+[personas]
+# Persona id used when none is specified (file in personas/, without .md).
+default = "default"
+# Optional: pin a persona to specific channels by id.
+# [personas.by_channel]
+# "123456789012345678" = "thumbnail-scout"
+
+[knowledge]
+# Pull the repo every N seconds so chat stays fresh after merges. 0 = never.
+pull_interval_seconds = 0
+
+[actions]
+# Slash commands map to action names registered in ../workflows/actions.toml.
+# The bot dispatches these to GitHub; the matching agent does the work + opens a PR.
+save = "save_link"
