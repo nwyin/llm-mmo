@@ -4,6 +4,12 @@ Three things to wire up: a **Discord application** (the bot), **GitHub secrets**
 agents can call the LLM), and a **dispatch token** (so the bot can trigger GitHub Actions).
 Budget ~20 minutes.
 
+> **Prefer to be walked through it?** Open this repo in a coding agent (Claude Code / Codex /
+> opencode) and ask it to *"help me set this up"* — it loads the **`getting-started`** skill and
+> drives the reviewable helper scripts in [`scripts/`](scripts/) (dependency check, secret
+> upload, Fly deploy). This page is the manual reference for the same steps. Start with the
+> read-only `bash scripts/check-deps.sh`.
+
 ---
 
 ## 1. Create the Discord application & bot

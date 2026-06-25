@@ -65,6 +65,13 @@ Agent behavior is defined entirely by editable markdown prompts.
 
 ## Quickstart
 
+**Guided (recommended):** open this repo in a coding agent (Claude Code / Codex / opencode) and
+ask it to *"help me set this up."* It loads the **`getting-started`** skill and walks you through
+dependencies, tokens, secrets, and deployment — driving the reviewable scripts in
+[`scripts/`](scripts/). Start anytime with the read-only check: `bash scripts/check-deps.sh`.
+
+**Manual:** follow the steps below and **[SETUP.md](SETUP.md)**.
+
 1. **Use this template** on GitHub (green "Use this template" button) to make your own repo.
 2. **Add secrets** (Settings → Secrets and variables → Actions):
    - `OPENROUTER_API_KEY` — for the review/action agents.
