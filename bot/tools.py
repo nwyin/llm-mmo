@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any
 
+import dispatch
 from agent import RESEARCH_SUBAGENT_PROMPT, Tool, run_agent
 from knowledge import KnowledgeBase
 from memory import TARGETS, MemoryStore
@@ -195,6 +197,91 @@ def build_recall_tool(store: Store, *, channel_id: str) -> Tool:
             "required": ["query"],
         },
         handler=recall,
+    )
+
+
+def _validate_kb_path(path: str) -> str | None:
+    """Reject anything that would write outside knowledge/. Returns an error string or None."""
+    path = (path or "").strip()
+    if not path:
+        return "error: path is required"
+    if "\\" in path:
+        return "error: path must use forward slashes (got a backslash)"
+    if path.startswith("/") or path.startswith("~"):
+        return "error: path must be relative to knowledge/, not absolute"
+    parts = PurePosixPath(path).parts
+    if any(part in ("..", "") for part in parts):
+        return "error: path must stay within knowledge/ (no '..' segments)"
+    if not path.endswith(".md"):
+        return "error: path must end in .md"
+    return None
+
+
+def build_save_to_kb_tool(*, token: str, repo: str, action: str, requested_by: str, channel_id: str) -> Tool:
+    async def save_to_kb(args: dict[str, Any]) -> str:
+        path = str(args.get("path", ""))
+        content = str(args.get("content", ""))
+        error = _validate_kb_path(path)
+        if error:
+            return error
+        if not content.strip():
+            return "error: content is required"
+        payload = {
+            "path": path,
+            "title": str(args.get("title", "")).strip(),
+            "content": content,
+            "reason": str(args.get("reason", "")).strip(),
+            "requested_by": requested_by,
+            "channel_id": channel_id,
+        }
+        try:
+            await dispatch.dispatch_action(token=token, repo=repo, action=action, payload=payload)
+        except Exception as exc:  # noqa: BLE001 — surface dispatch failure as a tool error
+            return f"error: could not request the save: {exc}"
+        return f"ok: requested a save of knowledge/{path}. A PR will open in {repo} for review — nothing is written until it is merged."
+
+    return Tool(
+        name="save_to_kb",
+        description=(
+            "Persist a finished note (research brief, collated customer feedback, client profile) to the knowledge base. "
+            "This does NOT write directly — it opens a pull request for human review. Provide the full markdown content; "
+            "path is repo-relative under knowledge/ and must end in .md."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Repo-relative path under knowledge/, ending in .md, e.g. 'clients/acme.md'."},
+                "title": {"type": "string", "description": "Short human title for the PR."},
+                "content": {"type": "string", "description": "Full markdown body of the note to save."},
+                "reason": {"type": "string", "description": "Why this is being saved (for the PR description)."},
+            },
+            "required": ["path", "content"],
+        },
+        handler=save_to_kb,
+    )
+
+
+def build_workspace_recall_tool(store: Store) -> Tool:
+    def workspace_recall(args: dict[str, Any]) -> str:
+        rows = store.search_all_channels(args["query"])
+        if not rows:
+            return "no matches across channels"
+        return "\n".join(f"[{row['channel_id']}] {row['role']} @ {row['ts']}: {row['snippet']}" for row in rows)
+
+    return Tool(
+        name="workspace_recall",
+        description=(
+            "Search ALL channels' past conversations for institutional knowledge discussed anywhere in the workspace. "
+            "Admin-only and cross-channel — use the channel-scoped recall for the current conversation."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query across every channel's history."},
+            },
+            "required": ["query"],
+        },
+        handler=workspace_recall,
     )
 
 

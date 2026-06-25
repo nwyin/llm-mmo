@@ -62,6 +62,11 @@ jobs:
           NOTE: ${{ github.event.client_payload.note }}
           REQUESTED_BY: ${{ github.event.client_payload.requested_by }}
           CHANNEL_ID: ${{ github.event.client_payload.channel_id }}
+          # save_note payload (agent-authored knowledge notes). PATH is reserved, so prefix NOTE_.
+          NOTE_PATH: ${{ github.event.client_payload.path }}
+          NOTE_TITLE: ${{ github.event.client_payload.title }}
+          NOTE_CONTENT: ${{ github.event.client_payload.content }}
+          NOTE_REASON: ${{ github.event.client_payload.reason }}
         run: |
           chmod +x workflows/scripts/run-action.sh
           workflows/scripts/run-action.sh "${{ github.event.client_payload.action }}"

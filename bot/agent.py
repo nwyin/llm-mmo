@@ -23,6 +23,11 @@ MEMORY_GUIDANCE = (
 SKILLS_GUIDANCE = (
     "The system prompt lists available skills. When a skill matches the task, call skill_view(name) to load its instructions and follow them."
 )
+RECALL_GUIDANCE = (
+    "recall searches only THIS channel's past conversations. workspace_recall (admin-only, when available) searches every channel — "
+    "use it for institutional knowledge that may have been discussed elsewhere. To persist a finished note for the team, use save_to_kb, "
+    "which opens a pull request for review."
+)
 WEB_TOOL_GUIDANCE = (
     "For questions about the outside world — markets, competitors, prospective clients, news, public companies — "
     "use web_search to find sources, then web_extract to read the most relevant pages before answering. "

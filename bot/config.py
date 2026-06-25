@@ -48,6 +48,8 @@ class Config:
     web_timeout: int
     web_max_chars: int
     web_max_results: int
+    workspace_recall_enabled: bool
+    save_note_action: str
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -114,5 +116,7 @@ def load_config() -> Config:
         web_timeout=int(web.get("timeout_seconds", 20)),
         web_max_chars=int(web.get("max_chars", 8000)),
         web_max_results=int(web.get("max_results", 5)),
+        workspace_recall_enabled=bool(raw.get("recall", {}).get("workspace_enabled", False)),
+        save_note_action=str(raw.get("actions", {}).get("save_note", "save_note")),
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

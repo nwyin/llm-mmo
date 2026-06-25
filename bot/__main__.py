@@ -28,8 +28,10 @@ from tools import (
     build_knowledge_tools,
     build_recall_tool,
     build_remember_tool,
+    build_save_to_kb_tool,
     build_skill_view_tool,
     build_web_tools,
+    build_workspace_recall_tool,
 )
 from web import WebClient
 
@@ -84,9 +86,26 @@ class MMOBot(discord.Client):
             log.warning("web research disabled: invalid provider config", exc_info=True)
             return None
 
+    def _is_admin(self, user_id: str) -> bool:
+        # Mirrors the remember-tool gate: an empty admin list means "anyone".
+        return (not self.cfg.memory_admins) or user_id in self.cfg.memory_admins
+
     def _request_tools(self, *, channel_id: str, user_id: str) -> list[agent.Tool]:
         # Recall is intentionally scoped to the requesting Discord channel.
         tools = [*self.base_tools, build_recall_tool(self.store, channel_id=channel_id)]
+        if self.cfg.github_dispatch_token and self.cfg.github_repo:
+            tools.append(
+                build_save_to_kb_tool(
+                    token=self.cfg.github_dispatch_token,
+                    repo=self.cfg.github_repo,
+                    action=self.cfg.save_note_action,
+                    requested_by=user_id,
+                    channel_id=channel_id,
+                )
+            )
+        # Cross-channel recall is a privileged path: only surface it to admins, and only when enabled.
+        if self.cfg.workspace_recall_enabled and self._is_admin(user_id):
+            tools.append(build_workspace_recall_tool(self.store))
         if self.cfg.memory_allow_writes:
             tools.append(build_remember_tool(self.memory, user_id=user_id, admins=self.cfg.memory_admins))
         return tools
@@ -151,6 +170,7 @@ class MMOBot(discord.Client):
         prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE
         if self.web is not None:
             prompt += "\n\n" + agent.WEB_TOOL_GUIDANCE
+        prompt += "\n\n" + agent.RECALL_GUIDANCE
         prompt += "\n\n" + agent.MEMORY_GUIDANCE + "\n\n" + self.memory.snapshot()
         skills_index = self.skills.index_text()
         if skills_index:

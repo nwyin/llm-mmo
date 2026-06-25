@@ -24,6 +24,14 @@ agent = "save_link"
 title = "Save link"
 target_dir = "knowledge/"
 
+# Persists an agent-authored note (research brief, customer feedback, client profile) that the
+# Discord assistant composed via the save_to_kb tool. Writes the provided content to knowledge/
+# and opens a PR — the agent never writes the knowledge base directly.
+[save_note]
+agent = "save_note"
+title = "Save note"
+target_dir = "knowledge/"
+
 # Meta-action: scaffolds a brand-new workflow from a plain-English description (in `note`)
 # and opens a PR. Writes into workflows/, so it must add that path, not knowledge/.
 [new_action]

@@ -22,6 +22,21 @@
         "write": "allow"
       }
     },
+    "save_note": {
+      "mode": "primary",
+      "model": "openrouter/anthropic/claude-sonnet-4.6",
+      "prompt": "{file:./agents/save_note/PROMPT.md}",
+      "steps": 20,
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "webfetch": "allow",
+        "bash": "allow",
+        "edit": "allow",
+        "write": "allow"
+      }
+    },
     "reviewer": {
       "mode": "primary",
       "model": "openrouter/anthropic/claude-sonnet-4.6",

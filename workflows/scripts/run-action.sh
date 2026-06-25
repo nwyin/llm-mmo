@@ -6,6 +6,7 @@
 # The action's input is passed via environment variables (set by agent-action.yml from the
 # Discord dispatch payload):
 #   LINK, NOTE, REQUESTED_BY, CHANNEL_ID
+#   NOTE_PATH, NOTE_TITLE, NOTE_CONTENT, NOTE_REASON  (used by the save_note action)
 #
 # Required env:
 #   OPENROUTER_API_KEY   — LLM calls.
@@ -78,7 +79,13 @@ into the repository, then output your PR description.
 ## Input
 - **link**: ${LINK:-（none）}
 - **note**: ${NOTE:-（none）}
+- **path**: ${NOTE_PATH:-（none）}
+- **title**: ${NOTE_TITLE:-（none）}
+- **reason**: ${NOTE_REASON:-（none）}
 - **requested_by**: ${REQUESTED_BY:-unknown}
+
+### content
+${NOTE_CONTENT:-（none）}
 
 Today's date is $(date +%Y-%m-%d).
 EOF
