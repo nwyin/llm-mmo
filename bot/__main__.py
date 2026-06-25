@@ -20,6 +20,7 @@ from discord import app_commands
 import agent
 import dispatch
 from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
+from cron import CronScheduler, CronStore, Job
 from knowledge import KnowledgeBase
 from memory import MemoryStore
 from nudge import NudgeTracker
@@ -28,6 +29,7 @@ from review import run_background_review
 from skills import SkillLibrary
 from store import Store
 from tools import (
+    build_cronjob_tool,
     build_delegate_tool,
     build_knowledge_tools,
     build_recall_tool,
@@ -62,6 +64,13 @@ class MMOBot(discord.Client):
         self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
         self.skills = SkillLibrary(cfg.skills_dir, runtime_dir=cfg.skills_runtime_dir)
         self.trackers: dict[str, NudgeTracker] = {}
+        self.cron_store = CronStore(cfg.cron_path)
+        self.cron = CronScheduler(
+            self.cron_store,
+            runner=self._run_cron_job,
+            deliver=self._deliver_cron,
+            on_error=lambda job, exc: log.warning("cron job %s failed: %s", job.id, exc),
+        )
         self.web = self._build_web_client(cfg)
         web_tools = build_web_tools(self.web, max_results=cfg.web_max_results) if self.web else []
         self.base_tools = (
@@ -135,10 +144,16 @@ class MMOBot(discord.Client):
             )
         )
         tools.append(build_skill_manage_tool(self.skills, on_write=tracker.note_skill_write))
+        # Scheduled automations: surfaced only to admins (the tool also re-checks).
+        if self.cfg.cron_enabled and self._is_admin(user_id):
+            tools.append(build_cronjob_tool(self.cron_store, user_id=user_id, admins=self.cfg.memory_admins, channel_id=channel_id))
         return tools
 
     async def setup_hook(self) -> None:
         register_commands(self)
+        if self.cfg.cron_enabled:
+            self.cron.use_asyncio_lock()  # now that an event loop exists
+            self.loop.create_task(self._cron_loop())
         if self.cfg.discord_guild_id:
             guild = discord.Object(id=self.cfg.discord_guild_id)
             self.tree.copy_global_to(guild=guild)
@@ -223,6 +238,38 @@ class MMOBot(discord.Client):
                 await channel.send(f"{REVIEW_NOTICE_PREFIX} _{notice}_")
             except Exception:  # noqa: BLE001
                 log.warning("could not post review notice", exc_info=True)
+
+    async def _run_cron_job(self, job: Job) -> str | None:
+        """Run a scheduled job as a normal agent turn (full toolset, incl. web)."""
+        _, system_prompt = self.personas.get(job.persona)
+        tracker = self._tracker(job.channel_id)
+        self._log_store(job.channel_id, "user", f"[scheduled] {job.prompt}")
+        reply = await agent.run_agent(
+            api_key=self.cfg.openrouter_api_key,
+            model=self.cfg.chat_model,
+            system_prompt=self._system_prompt(system_prompt),
+            user_message=job.prompt,
+            tools=self._request_tools(channel_id=job.channel_id, user_id=job.created_by, tracker=tracker),
+            max_iterations=self.cfg.max_iterations,
+        )
+        self._log_store(job.channel_id, "assistant", reply)
+        return reply
+
+    async def _deliver_cron(self, job: Job, text: str) -> None:
+        channel = self.get_channel(int(job.channel_id))
+        if channel is None:
+            log.warning("cron job %s: channel %s not found for delivery", job.id, job.channel_id)
+            return
+        await channel.send(f"⏰ **{job.id}** · {job.schedule}\n{text[:1850]}")
+
+    async def _cron_loop(self) -> None:
+        await self.wait_until_ready()
+        while not self.is_closed():
+            try:
+                await self.cron.tick()
+            except Exception:  # noqa: BLE001 — the loop must survive any single tick failure
+                log.warning("cron tick failed", exc_info=True)
+            await asyncio.sleep(self.cfg.cron_tick_seconds)
 
     def _system_prompt(self, persona_prompt: str, tracker: NudgeTracker | None = None) -> str:
         prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE

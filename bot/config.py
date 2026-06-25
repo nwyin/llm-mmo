@@ -56,6 +56,9 @@ class Config:
     review_max_iterations: int
     nudge_memory_interval: int
     nudge_skill_interval: int
+    cron_enabled: bool
+    cron_path: Path
+    cron_tick_seconds: int
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -95,6 +98,10 @@ def load_config() -> Config:
         skills_runtime_dir = BOT_DIR / skills_runtime_dir
     skills_runtime_dir = skills_runtime_dir.resolve()
     review = raw.get("review", {})
+    cron = raw.get("cron", {})
+    cron_path = Path(cron.get("path", store_path.parent / "cron.json"))
+    if not cron_path.is_absolute():
+        cron_path = BOT_DIR / cron_path
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
@@ -136,5 +143,8 @@ def load_config() -> Config:
         review_max_iterations=int(review.get("max_iterations", 4)),
         nudge_memory_interval=int(review.get("memory_nudge_interval", 10)),
         nudge_skill_interval=int(review.get("skill_nudge_interval", 10)),
+        cron_enabled=bool(cron.get("enabled", True)),
+        cron_path=cron_path,
+        cron_tick_seconds=int(cron.get("tick_seconds", 60)),
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

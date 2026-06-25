@@ -8,6 +8,7 @@ from typing import Any
 
 import dispatch
 from agent import RESEARCH_SUBAGENT_PROMPT, Tool, run_agent
+from cron import CronStore, ScheduleError, parse_schedule
 from knowledge import KnowledgeBase
 from memory import TARGETS, MemoryStore
 from skills import SkillLibrary
@@ -336,6 +337,74 @@ def build_workspace_recall_tool(store: Store) -> Tool:
             "required": ["query"],
         },
         handler=workspace_recall,
+    )
+
+
+def build_cronjob_tool(
+    store: CronStore,
+    *,
+    user_id: str,
+    admins: tuple[str, ...] | frozenset[str],
+    channel_id: str,
+) -> Tool:
+    def cronjob(args: dict[str, Any]) -> str:
+        if admins and user_id not in admins:
+            return "error: scheduled jobs can only be managed by admins for this server."
+        action = str(args.get("action", "")).strip()
+
+        if action == "create":
+            schedule = str(args.get("schedule", "")).strip()
+            prompt = str(args.get("prompt", "")).strip()
+            if not schedule:
+                return "error: schedule is required"
+            if not prompt:
+                return "error: prompt is required"
+            try:
+                parse_schedule(schedule)
+            except ScheduleError as exc:
+                return f"error: {exc}"
+            target = str(args.get("channel_id", "")).strip() or channel_id
+            persona = str(args.get("persona", "")).strip() or None
+            job = store.add(schedule=schedule, prompt=prompt, channel_id=target, persona=persona, created_by=user_id)
+            return f"ok: scheduled {job.summary()}"
+
+        if action == "list":
+            jobs = store.list()
+            if not jobs:
+                return "no scheduled jobs"
+            return "\n".join(job.summary() for job in jobs)
+
+        job_id = str(args.get("id", "")).strip()
+        if action in {"delete", "pause", "resume"} and not job_id:
+            return "error: id is required"
+        if action == "delete":
+            return f"ok: deleted {job_id}" if store.remove(job_id) else f"error: no job {job_id}"
+        if action == "pause":
+            return f"ok: paused {job_id}" if store.set_enabled(job_id, False) else f"error: no job {job_id}"
+        if action == "resume":
+            return f"ok: resumed {job_id}" if store.set_enabled(job_id, True) else f"error: no job {job_id}"
+        return f"error: unknown cron action: {action}"
+
+    return Tool(
+        name="cronjob",
+        description=(
+            "Manage scheduled automations (admin only). create a recurring job that runs a prompt and posts the result to a channel "
+            "(e.g. a daily customer-feedback digest or weekly competitor scan); list/pause/resume/delete existing jobs. Schedule can be "
+            "natural language ('daily 9am', 'weekly mon 9am', 'every 2 hours') or a 5-field cron expression."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["create", "list", "delete", "pause", "resume"], "description": "Job operation."},
+                "schedule": {"type": "string", "description": "When to run (create): 'daily 9am', 'weekly mon 9am', 'every 2 hours', or cron."},
+                "prompt": {"type": "string", "description": "What the agent should do each run (create)."},
+                "channel_id": {"type": "string", "description": "Target channel id (create); defaults to the current channel."},
+                "persona": {"type": "string", "description": "Optional persona id to run as (create)."},
+                "id": {"type": "string", "description": "Job id (delete/pause/resume)."},
+            },
+            "required": ["action"],
+        },
+        handler=cronjob,
     )
 
 
