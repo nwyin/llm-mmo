@@ -39,6 +39,8 @@ cd bot && uv run pytest  # unit tests for retrieval + persona loading
 3. The model calls tools as needed: `search_knowledge`, `read_page`, `delegate`, `recall`, optional `remember`, and `skill_view`.
 4. When the loop returns a final answer, the reply is posted back in-channel.
 
+Recall is scoped to the current channel by design: the Discord channel is the trust boundary, and cross-channel recall is not exposed to chat.
+
 Slash commands: `/ask` runs the same chat loop, `/save` dispatches a GitHub action, and `/new`
 starts a fresh per-channel session while leaving older messages searchable through `recall`.
 

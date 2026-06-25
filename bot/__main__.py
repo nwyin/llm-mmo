@@ -56,6 +56,7 @@ class MMOBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     def _request_tools(self, *, channel_id: str, user_id: str) -> list[agent.Tool]:
+        # Recall is intentionally scoped to the requesting Discord channel.
         tools = [*self.base_tools, build_recall_tool(self.store, channel_id=channel_id)]
         if self.cfg.memory_allow_writes:
             tools.append(build_remember_tool(self.memory, user_id=user_id, admins=self.cfg.memory_admins))

@@ -36,7 +36,7 @@ def test_log_and_search_finds_keyword_with_snippet(tmp_path: Path) -> None:
         store.log("channel-a", "assistant", "The launch checklist still needs DNS and smoke tests.", now=101.0)
         store.log("channel-b", "user", "Unrelated note about pricing.", now=102.0)
 
-        results = store.search("launch", limit=5)
+        results = store.search("launch", channel_id="channel-a", limit=5)
 
         assert len(results) == 2
         assert results[0]["role"] == "assistant"
@@ -54,7 +54,7 @@ def test_search_channel_scope_isolates_results(tmp_path: Path) -> None:
         store.log("channel-b", "user", "The orbit keyword belongs in channel b.", now=101.0)
 
         scoped = store.search("orbit", channel_id="channel-a", limit=5)
-        unscoped = store.search("orbit", limit=5)
+        unscoped = store.search_all_channels("orbit", limit=5)
 
         assert [row["channel_id"] for row in scoped] == ["channel-a"]
         assert {row["channel_id"] for row in unscoped} == {"channel-a", "channel-b"}
@@ -67,8 +67,23 @@ def test_search_nonsense_returns_nothing_and_fts_metacharacters_do_not_raise(tmp
     try:
         store.log("channel-a", "user", "Remember the deployment checklist.", now=200.0)
 
-        assert store.search("no-such-token-for-this-db") == []
-        assert store.search('"unterminated AND OR (') == []
+        assert store.search("no-such-token-for-this-db", channel_id="channel-a") == []
+        assert store.search('"unterminated AND OR (', channel_id="channel-a") == []
+    finally:
+        store.close()
+
+
+def test_public_search_requires_channel_id(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    try:
+        store.log("channel-a", "user", "The orbit keyword belongs in channel a.", now=100.0)
+
+        try:
+            store.search("orbit")  # type: ignore[call-arg]
+        except TypeError:
+            pass
+        else:
+            raise AssertionError("store.search must require channel_id")
     finally:
         store.close()
 

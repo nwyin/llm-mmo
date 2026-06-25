@@ -119,7 +119,24 @@ class Store:
         ).fetchone()
         return None if row is None else float(row["started_at"])
 
-    def search(self, query: str, *, channel_id: str | None = None, limit: int = 5) -> list[dict[str, Any]]:
+    # The Discord channel is the recall trust boundary: user-facing search is always scoped.
+    def search(self, query: str, *, channel_id: str, limit: int = 5) -> list[dict[str, Any]]:
+        if channel_id is None:
+            raise TypeError("channel_id is required")
+        return self._search(query, channel_id=channel_id, limit=limit)
+
+    def search_all_channels(self, query: str, *, limit: int = 5) -> list[dict[str, Any]]:
+        """Cross-channel recall.
+
+        Reserved for privileged/admin use and tests; NEVER wire this to user-facing chat tools — the Discord channel is the
+        recall trust boundary.
+        """
+        return self._search(query, channel_id=None, limit=limit)
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def _search(self, query: str, *, channel_id: str | None, limit: int) -> list[dict[str, Any]]:
         if not query.strip() or limit <= 0:
             return []
 
@@ -145,18 +162,16 @@ class Store:
         except sqlite3.OperationalError as exc:
             if not _is_fts_query_error(exc):
                 raise
-            rows = self._search_like(query, channel_id=channel_id, limit=limit)
+            if channel_id is None:
+                rows = self._search_like_all_channels(query, limit=limit)
+            else:
+                rows = self._search_like(query, channel_id=channel_id, limit=limit)
 
         return [dict(row) for row in rows]
 
-    def close(self) -> None:
-        self.conn.close()
-
-    def _search_like(self, query: str, *, channel_id: str | None, limit: int) -> list[sqlite3.Row]:
-        channel_clause = "" if channel_id is None else "AND channel_id = ?"
-        params: tuple[Any, ...] = (f"%{_escape_like(query)}%", limit) if channel_id is None else (f"%{_escape_like(query)}%", channel_id, limit)
+    def _search_like(self, query: str, *, channel_id: str, limit: int) -> list[sqlite3.Row]:
         return self.conn.execute(
-            f"""
+            """
             SELECT
               content AS snippet,
               role,
@@ -164,11 +179,27 @@ class Store:
               channel_id
             FROM messages
             WHERE content LIKE ? ESCAPE '\\'
-              {channel_clause}
+              AND channel_id = ?
             ORDER BY ts DESC
             LIMIT ?
             """,
-            params,
+            (f"%{_escape_like(query)}%", channel_id, limit),
+        ).fetchall()
+
+    def _search_like_all_channels(self, query: str, *, limit: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """
+            SELECT
+              content AS snippet,
+              role,
+              ts,
+              channel_id
+            FROM messages
+            WHERE content LIKE ? ESCAPE '\\'
+            ORDER BY ts DESC
+            LIMIT ?
+            """,
+            (f"%{_escape_like(query)}%", limit),
         ).fetchall()
 
 
