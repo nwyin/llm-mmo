@@ -4,7 +4,8 @@
 # runs the named agent, then run-action.sh commits whatever files the agent created and
 # opens a PR.
 #
-# To add an action (full spec + snippets in workflows/AUTHORING.md):
+# To add an action (full spec + snippets: the `creating-workflows` skill,
+# .claude/skills/creating-workflows/SKILL.md):
 #   1. Create workflows/agents/<id>/PROMPT.md  (copy agents/_template/).
 #   2. Add the agent to workflows/opencode.json (give it write/bash/webfetch permission).
 #   3. Register it here.

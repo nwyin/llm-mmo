@@ -9,7 +9,6 @@ markdown knowledge base.
 
 | Path | What |
 |------|------|
-| `AUTHORING.md` | **The spec for adding a workflow.** Read this before adding an action or reviewer. |
 | `opencode.json` | Declares the agents (model, prompt file, permissions). |
 | `agents/SHARED.md` | Rules injected into **every** agent (via opencode `instructions`). |
 | `agents/_template/` | Scaffold you copy to start a new action (not a registered agent). |
@@ -48,8 +47,10 @@ pull_request
 
 ## Adding a workflow
 
-Full instructions, copy-paste snippets, and the invariants live in
-**[AUTHORING.md](AUTHORING.md)**. The short version:
+Full instructions, copy-paste snippets, and the invariants live in the **`creating-workflows`
+skill** ([`../.claude/skills/creating-workflows/SKILL.md`](../.claude/skills/creating-workflows/SKILL.md)) —
+which your local coding agent (Claude Code / Codex / opencode) auto-loads when you ask. The short
+version:
 
 **New action** (does work → opens a PR):
 
@@ -75,8 +76,8 @@ The **`new_action`** meta-agent does all of the above from a plain-English descr
 the `new_action` action with the description in the `note` field (e.g. *"add an action that
 saves a competitor's landing page as a note under knowledge/competitors/"*) and it scaffolds the
 prompt, edits `opencode.json` + the registry, self-checks the JSON/TOML, and opens a PR you
-review like any other. It reads `AUTHORING.md` and `agents/_template/` to do this — so keeping
-those accurate keeps the meta-agent accurate.
+review like any other. It loads the `creating-workflows` skill and reads `agents/_template/` to
+do this — so keeping those accurate keeps the meta-agent accurate.
 
 ## Why a PAT for opening PRs?
 

@@ -4,8 +4,9 @@ Your job: **scaffold a brand-new workflow in this repo** from a plain-English de
 prepare it for a pull request. You are the agent that builds other agents. The surrounding
 script commits your changes and opens the PR.
 
-Read **`workflows/AUTHORING.md`** first — it is the authoritative spec for how a workflow is
-structured and which files you must touch. Everything below assumes you've followed it.
+Read the **`creating-workflows` skill** first (`.claude/skills/creating-workflows/SKILL.md`) — it
+is the authoritative spec for how a workflow is structured and which files you must touch.
+Everything below assumes you've followed it.
 
 ## Input
 
@@ -34,7 +35,7 @@ that explains what's missing and create no files.
    don't restate SHARED.md.
 
 3. **Declare the agent in `workflows/opencode.json`.** Add an entry under `"agent"` following
-   the permission guidance in AUTHORING.md — least privilege:
+   the permission guidance in the skill — least privilege:
    - Action that writes files: `read`/`grep`/`glob`/`write`/`edit` allowed, plus `bash` and/or
      `webfetch` only if the task needs them.
    - Reviewer: `read`/`grep`/`glob` (and `websearch` if useful) allowed; `write`/`edit`/`bash`

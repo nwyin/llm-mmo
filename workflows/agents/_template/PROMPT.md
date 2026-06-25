@@ -1,7 +1,7 @@
 <!--
   TEMPLATE — copy this directory to agents/<your-action-id>/ and rewrite it.
   Leading-underscore directories are scaffolding and are NEVER registered as agents.
-  Full spec: ../../AUTHORING.md   ·   Working example: ../save_link/PROMPT.md
+  Full spec: the `creating-workflows` skill   ·   Working example: ../save_link/PROMPT.md
   Delete this comment when you adapt it.
 -->
 

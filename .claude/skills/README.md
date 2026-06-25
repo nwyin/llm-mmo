@@ -17,7 +17,5 @@ No single directory is read by all harnesses, so each skill is mirrored:
 | `.claude/skills/<name>/` | Claude Code, opencode |
 | `.agents/skills/<name>/` | Codex, opencode |
 
-The two copies are byte-identical. Keep them in sync — but both are thin pointers, so the real
-content lives in `workflows/AUTHORING.md`; edit that for anything substantive. (On a Unix-only
-team you could replace the `.agents/skills/` copy with a symlink to drop the duplication; we keep
-a real file so the template stays Windows-clone-safe.)
+The two copies are byte-identical and self-contained — when you change a skill, update both. We
+keep a real file in each location (rather than a symlink) so the template stays Windows-clone-safe.
