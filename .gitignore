@@ -8,6 +8,7 @@ __pycache__/
 # Secrets / local env
 .env
 *.secrets.env
+bot/state.db*
 
 # Working files generated during agent runs
 workflows/.work/

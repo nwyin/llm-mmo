@@ -6,6 +6,7 @@ from typing import Any
 
 from agent import RESEARCH_SUBAGENT_PROMPT, Tool, run_agent
 from knowledge import KnowledgeBase
+from store import Store
 
 
 def build_knowledge_tools(kb: KnowledgeBase, *, max_files: int, max_chars: int, snippet_chars: int = 400) -> list[Tool]:
@@ -98,4 +99,25 @@ def build_delegate_tool(
             "required": ["goal"],
         },
         handler=delegate,
+    )
+
+
+def build_recall_tool(store: Store) -> Tool:
+    def recall(args: dict[str, Any]) -> str:
+        rows = store.search(args["query"])
+        if not rows:
+            return "no earlier matches"
+        return "\n".join(f"{row['role']} @ {row['ts']}: {row['snippet']}" for row in rows)
+
+    return Tool(
+        name="recall",
+        description="Search the bot's own past conversations (across sessions) for something discussed before.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query for earlier conversation snippets."},
+            },
+            "required": ["query"],
+        },
+        handler=recall,
     )

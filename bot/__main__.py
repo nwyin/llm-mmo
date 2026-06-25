@@ -20,7 +20,8 @@ import dispatch
 from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
 from knowledge import KnowledgeBase
 from personas import Personas
-from tools import build_delegate_tool, build_knowledge_tools
+from store import Store
+from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool
 
 log = logging.getLogger("llm-mmo")
 
@@ -36,6 +37,7 @@ class MMOBot(discord.Client):
         self.cfg = cfg
         self.knowledge = KnowledgeBase(KNOWLEDGE_DIR)
         self.personas = Personas(PERSONAS_DIR, cfg.default_persona)
+        self.store = Store(cfg.store_path)
         self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
             build_delegate_tool(
                 self.knowledge,
@@ -44,7 +46,8 @@ class MMOBot(discord.Client):
                 api_key=cfg.openrouter_api_key,
                 model=cfg.chat_model,
                 max_iterations=cfg.max_iterations,
-            )
+            ),
+            build_recall_tool(self.store),
         ]
         self.tree = app_commands.CommandTree(self)
 
@@ -85,9 +88,11 @@ class MMOBot(discord.Client):
         await message.reply(reply[:1900])  # Discord's 2000-char message limit, with headroom
 
     async def _answer(self, system_prompt: str, question: str, message: discord.Message) -> str:
+        channel_id = str(message.channel.id)
+        self._log_store(channel_id, "user", question)
         history = await self._recent_history(message)
         try:
-            return await agent.run_agent(
+            reply = await agent.run_agent(
                 api_key=self.cfg.openrouter_api_key,
                 model=self.cfg.chat_model,
                 system_prompt=system_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE,
@@ -96,6 +101,8 @@ class MMOBot(discord.Client):
                 history=history,
                 max_iterations=self.cfg.max_iterations,
             )
+            self._log_store(channel_id, "assistant", reply)
+            return reply
         except Exception:  # noqa: BLE001 — surface a friendly error, log the detail
             log.exception("chat reply failed")
             return "⚠️ I hit an error talking to the model. Check the bot logs."
@@ -105,13 +112,22 @@ class MMOBot(discord.Client):
         if turns <= 0:
             return []
         history: list[dict[str, str]] = []
+        started = self.store.session_started_at(str(message.channel.id))
         async for prior in message.channel.history(limit=turns + 1, before=message):
+            if started is not None and prior.created_at.timestamp() < started:
+                continue
             if not prior.clean_content:
                 continue
             role = "assistant" if prior.author == self.user else "user"
             history.append({"role": role, "content": prior.clean_content})
         history.reverse()
         return history
+
+    def _log_store(self, channel_id: str, role: str, content: str) -> None:
+        try:
+            self.store.log(channel_id, role, content)
+        except Exception:  # noqa: BLE001
+            log.warning("store log failed", exc_info=True)
 
 
 def register_commands(bot: MMOBot) -> None:
@@ -120,6 +136,8 @@ def register_commands(bot: MMOBot) -> None:
     async def ask(interaction: discord.Interaction, question: str, persona: str | None = None) -> None:
         await interaction.response.defer(thinking=True)
         _, system_prompt = bot.personas.get(persona)
+        channel_id = str(interaction.channel_id)
+        bot._log_store(channel_id, "user", question)
         try:
             reply = await agent.run_agent(
                 api_key=bot.cfg.openrouter_api_key,
@@ -129,10 +147,18 @@ def register_commands(bot: MMOBot) -> None:
                 tools=bot.tools,
                 max_iterations=bot.cfg.max_iterations,
             )
+            bot._log_store(channel_id, "assistant", reply)
         except Exception:  # noqa: BLE001
             log.exception("/ask failed")
             reply = "⚠️ I hit an error talking to the model. Check the bot logs."
         await interaction.followup.send(reply[:1900])
+
+    @bot.tree.command(name="new", description="Start a fresh chat session in this channel.")
+    async def new(interaction: discord.Interaction) -> None:
+        bot.store.new_session(str(interaction.channel_id))
+        await interaction.response.send_message(
+            "🧵 Started a fresh session — earlier messages won't be used as context (still searchable via recall)."
+        )
 
     @bot.tree.command(name="save", description="Save a link to the knowledge base (opens a PR).")
     @app_commands.describe(link="URL to save", note="Why it's interesting / what to capture")

@@ -36,6 +36,7 @@ class Config:
     default_persona: str
     persona_by_channel: dict[str, str]
     pull_interval_seconds: int
+    store_path: Path
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -55,6 +56,10 @@ def load_config() -> Config:
     chat = raw.get("chat", {})
     personas = raw.get("personas", {})
     knowledge = raw.get("knowledge", {})
+    store = raw.get("store", {})
+    store_path = Path(store.get("path", "state.db"))
+    if not store_path.is_absolute():
+        store_path = BOT_DIR / store_path
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
@@ -72,5 +77,6 @@ def load_config() -> Config:
         default_persona=personas.get("default", "default"),
         persona_by_channel={str(k): str(v) for k, v in personas.get("by_channel", {}).items()},
         pull_interval_seconds=int(knowledge.get("pull_interval_seconds", 0)),
+        store_path=store_path,
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

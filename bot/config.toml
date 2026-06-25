@@ -23,6 +23,10 @@ default = "default"
 # Pull the repo every N seconds so chat stays fresh after merges. 0 = never.
 pull_interval_seconds = 0
 
+[store]
+# SQLite transcript store path, relative to this bot dir. Gitignored locally; attach a volume in production.
+path = "state.db"
+
 [actions]
 # Slash commands map to action names registered in ../workflows/actions.toml.
 # The bot dispatches these to GitHub; the matching agent does the work + opens a PR.

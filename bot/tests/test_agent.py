@@ -8,7 +8,8 @@ from typing import Any
 
 import agent
 from knowledge import KnowledgeBase
-from tools import build_delegate_tool, build_knowledge_tools
+from store import Store
+from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool
 
 
 def _write(root: Path, rel: str, text: str) -> None:
@@ -241,3 +242,17 @@ def test_run_agent_awaits_async_tool_handler(monkeypatch) -> None:
         message["role"] == "tool" and message["tool_call_id"] == "call_async" and message["content"] == "async value: ok"
         for message in calls[1]
     )
+
+
+def test_recall_tool_returns_store_hits(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    try:
+        store.log("channel-a", "user", "We picked the launch checklist as the next topic.", now=100.0)
+        recall = build_recall_tool(store)
+
+        result = recall.handler({"query": "launch"})
+
+        assert "user @ 100.0:" in result
+        assert "[launch]" in result.lower()
+    finally:
+        store.close()
