@@ -20,6 +20,9 @@ MEMORY_GUIDANCE = (
     "You have long-term memory shown above. Proactively save durable facts about the team, project, or user with remember. "
     "Use agent for team/project notes and user for the user's preferences. Never save secrets or transient chatter."
 )
+SKILLS_GUIDANCE = (
+    "The system prompt lists available skills. When a skill matches the task, call skill_view(name) to load its instructions and follow them."
+)
 RESEARCH_SUBAGENT_PROMPT = (
     "You are an internal research subagent. Research the knowledge base for the user's goal. "
     "Search first, read the most relevant pages, then return a concise brief with key findings "

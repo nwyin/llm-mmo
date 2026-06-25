@@ -34,6 +34,10 @@ dir = "../memory"
 # Per-file character limit for bot-editable memory.
 max_chars = 2000
 
+[skills]
+# Directory for agentskills.io skill packages, relative to this bot dir.
+dir = "../.agents/skills"
+
 [actions]
 # Slash commands map to action names registered in ../workflows/actions.toml.
 # The bot dispatches these to GitHub; the matching agent does the work + opens a PR.

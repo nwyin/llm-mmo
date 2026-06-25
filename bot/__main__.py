@@ -21,8 +21,9 @@ from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
 from knowledge import KnowledgeBase
 from memory import MemoryStore
 from personas import Personas
+from skills import SkillLibrary
 from store import Store
-from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool, build_remember_tool
+from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool, build_remember_tool, build_skill_view_tool
 
 log = logging.getLogger("llm-mmo")
 
@@ -40,6 +41,7 @@ class MMOBot(discord.Client):
         self.personas = Personas(PERSONAS_DIR, cfg.default_persona)
         self.store = Store(cfg.store_path)
         self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
+        self.skills = SkillLibrary(cfg.skills_dir)
         self.tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
             build_delegate_tool(
                 self.knowledge,
@@ -51,6 +53,7 @@ class MMOBot(discord.Client):
             ),
             build_recall_tool(self.store),
             build_remember_tool(self.memory),
+            build_skill_view_tool(self.skills),
         ]
         self.tree = app_commands.CommandTree(self)
 
@@ -111,7 +114,11 @@ class MMOBot(discord.Client):
             return "⚠️ I hit an error talking to the model. Check the bot logs."
 
     def _system_prompt(self, persona_prompt: str) -> str:
-        return persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE + "\n\n" + agent.MEMORY_GUIDANCE + "\n\n" + self.memory.snapshot()
+        prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE + "\n\n" + agent.MEMORY_GUIDANCE + "\n\n" + self.memory.snapshot()
+        skills_index = self.skills.index_text()
+        if skills_index:
+            prompt += "\n\n" + agent.SKILLS_GUIDANCE + "\n\n" + skills_index
+        return prompt
 
     async def _recent_history(self, message: discord.Message) -> list[dict[str, str]]:
         turns = self.cfg.history_turns

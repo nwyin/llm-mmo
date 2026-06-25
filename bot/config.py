@@ -17,6 +17,7 @@ BOT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BOT_DIR.parent
 KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
 PERSONAS_DIR = REPO_ROOT / "personas"
+SKILLS_DIR = REPO_ROOT / ".agents" / "skills"
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class Config:
     store_path: Path
     memory_dir: Path
     memory_max_chars: int
+    skills_dir: Path
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -67,6 +69,11 @@ def load_config() -> Config:
     if not memory_dir.is_absolute():
         memory_dir = BOT_DIR / memory_dir
     memory_dir = memory_dir.resolve()
+    skills = raw.get("skills", {})
+    skills_dir = Path(skills.get("dir", SKILLS_DIR))
+    if not skills_dir.is_absolute():
+        skills_dir = BOT_DIR / skills_dir
+    skills_dir = skills_dir.resolve()
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
@@ -87,5 +94,6 @@ def load_config() -> Config:
         store_path=store_path,
         memory_dir=memory_dir,
         memory_max_chars=int(memory.get("max_chars", 2000)),
+        skills_dir=skills_dir,
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

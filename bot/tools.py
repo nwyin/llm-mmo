@@ -7,6 +7,7 @@ from typing import Any
 from agent import RESEARCH_SUBAGENT_PROMPT, Tool, run_agent
 from knowledge import KnowledgeBase
 from memory import TARGETS, MemoryStore
+from skills import SkillLibrary
 from store import Store
 
 
@@ -100,6 +101,25 @@ def build_delegate_tool(
             "required": ["goal"],
         },
         handler=delegate,
+    )
+
+
+def build_skill_view_tool(skills: SkillLibrary) -> Tool:
+    def skill_view(args: dict[str, Any]) -> str:
+        name = args["name"]
+        return skills.view(name)
+
+    return Tool(
+        name="skill_view",
+        description="Load the full instructions for a named skill from the index in your system prompt.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Exact skill name from the system prompt skills index."},
+            },
+            "required": ["name"],
+        },
+        handler=skill_view,
     )
 
 
