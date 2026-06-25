@@ -9,6 +9,7 @@ from knowledge import KnowledgeBase
 from memory import TARGETS, MemoryStore
 from skills import SkillLibrary
 from store import Store
+from web import WebClient, WebError, format_results
 
 
 def build_knowledge_tools(kb: KnowledgeBase, *, max_files: int, max_chars: int, snippet_chars: int = 400) -> list[Tool]:
@@ -64,6 +65,53 @@ def build_knowledge_tools(kb: KnowledgeBase, *, max_files: int, max_chars: int, 
     ]
 
 
+def build_web_tools(web: WebClient, *, max_results: int = 5) -> list[Tool]:
+    async def web_search(args: dict[str, Any]) -> str:
+        query = args.get("query", "")
+        try:
+            results = await web.search(query, k=max_results)
+        except WebError as exc:
+            return f"error: {exc}"
+        return format_results(results)
+
+    async def web_extract(args: dict[str, Any]) -> str:
+        url = args.get("url", "")
+        try:
+            return await web.extract(url)
+        except WebError as exc:
+            return f"error: {exc}"
+
+    return [
+        Tool(
+            name="web_search",
+            description=(
+                "Search the public web for external facts (markets, competitors, prospective clients, news). "
+                "Returns ranked title/url/snippet results. Follow up with web_extract to read a page, and cite URLs."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Web search query."},
+                },
+                "required": ["query"],
+            },
+            handler=web_search,
+        ),
+        Tool(
+            name="web_extract",
+            description="Fetch an http(s) URL and return its main text (length-capped). Use after web_search; cite the URL.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "http(s) URL to fetch and read."},
+                },
+                "required": ["url"],
+            },
+            handler=web_extract,
+        ),
+    ]
+
+
 def build_delegate_tool(
     kb: KnowledgeBase,
     *,
@@ -72,23 +120,29 @@ def build_delegate_tool(
     api_key: str,
     model: str,
     max_iterations: int,
+    web: WebClient | None = None,
+    web_max_results: int = 5,
 ) -> Tool:
     async def delegate(args: dict[str, Any]) -> str:
         goal = args["goal"]
+        subagent_tools = build_knowledge_tools(kb, max_files=max_files, max_chars=max_chars)
+        if web is not None:
+            subagent_tools = subagent_tools + build_web_tools(web, max_results=web_max_results)
         return await run_agent(
             api_key=api_key,
             model=model,
             system_prompt=RESEARCH_SUBAGENT_PROMPT,
             user_message=goal,
-            tools=build_knowledge_tools(kb, max_files=max_files, max_chars=max_chars),
+            tools=subagent_tools,
             max_iterations=max_iterations,
         )
 
     return Tool(
         name="delegate",
         description=(
-            "Delegate a focused research question to an isolated subagent that searches/reads the knowledge base and returns a "
-            "brief. Use for multi-step or broad lookups; for a single quick fact, use search_knowledge/read_page directly."
+            "Delegate a focused research question to an isolated subagent that searches/reads the knowledge base and the web, then "
+            "returns a brief with sources. Use for multi-step or broad research (e.g. profiling a client or competitor); for a single "
+            "quick fact, use search_knowledge/read_page or web_search directly."
         ),
         parameters={
             "type": "object",

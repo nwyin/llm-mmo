@@ -23,7 +23,15 @@ from memory import MemoryStore
 from personas import Personas
 from skills import SkillLibrary
 from store import Store
-from tools import build_delegate_tool, build_knowledge_tools, build_recall_tool, build_remember_tool, build_skill_view_tool
+from tools import (
+    build_delegate_tool,
+    build_knowledge_tools,
+    build_recall_tool,
+    build_remember_tool,
+    build_skill_view_tool,
+    build_web_tools,
+)
+from web import WebClient
 
 log = logging.getLogger("llm-mmo")
 
@@ -42,18 +50,39 @@ class MMOBot(discord.Client):
         self.store = Store(cfg.store_path)
         self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
         self.skills = SkillLibrary(cfg.skills_dir)
-        self.base_tools = build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars) + [
-            build_delegate_tool(
-                self.knowledge,
-                max_files=cfg.max_context_files,
-                max_chars=cfg.max_context_chars,
-                api_key=cfg.openrouter_api_key,
-                model=cfg.chat_model,
-                max_iterations=cfg.max_iterations,
-            ),
-            build_skill_view_tool(self.skills),
-        ]
+        self.web = self._build_web_client(cfg)
+        web_tools = build_web_tools(self.web, max_results=cfg.web_max_results) if self.web else []
+        self.base_tools = (
+            build_knowledge_tools(self.knowledge, max_files=cfg.max_context_files, max_chars=cfg.max_context_chars)
+            + web_tools
+            + [
+                build_delegate_tool(
+                    self.knowledge,
+                    max_files=cfg.max_context_files,
+                    max_chars=cfg.max_context_chars,
+                    api_key=cfg.openrouter_api_key,
+                    model=cfg.chat_model,
+                    max_iterations=cfg.max_iterations,
+                    web=self.web,
+                    web_max_results=cfg.web_max_results,
+                ),
+                build_skill_view_tool(self.skills),
+            ]
+        )
         self.tree = app_commands.CommandTree(self)
+
+    @staticmethod
+    def _build_web_client(cfg: Config) -> WebClient | None:
+        try:
+            return WebClient(
+                provider=cfg.web_provider,
+                api_key=cfg.web_api_key,
+                timeout=cfg.web_timeout,
+                max_chars=cfg.web_max_chars,
+            )
+        except Exception:  # noqa: BLE001 — a misconfigured provider disables web tools, not the bot
+            log.warning("web research disabled: invalid provider config", exc_info=True)
+            return None
 
     def _request_tools(self, *, channel_id: str, user_id: str) -> list[agent.Tool]:
         # Recall is intentionally scoped to the requesting Discord channel.
@@ -119,7 +148,10 @@ class MMOBot(discord.Client):
             return "⚠️ I hit an error talking to the model. Check the bot logs."
 
     def _system_prompt(self, persona_prompt: str) -> str:
-        prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE + "\n\n" + agent.MEMORY_GUIDANCE + "\n\n" + self.memory.snapshot()
+        prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE
+        if self.web is not None:
+            prompt += "\n\n" + agent.WEB_TOOL_GUIDANCE
+        prompt += "\n\n" + agent.MEMORY_GUIDANCE + "\n\n" + self.memory.snapshot()
         skills_index = self.skills.index_text()
         if skills_index:
             prompt += "\n\n" + agent.SKILLS_GUIDANCE + "\n\n" + skills_index

@@ -43,6 +43,11 @@ class Config:
     memory_allow_writes: bool
     memory_admins: tuple[str, ...]
     skills_dir: Path
+    web_provider: str
+    web_api_key: str
+    web_timeout: int
+    web_max_chars: int
+    web_max_results: int
     action_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -79,6 +84,11 @@ def load_config() -> Config:
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
+    web = raw.get("web", {})
+    web_provider = os.environ.get("WEB_SEARCH_PROVIDER", web.get("provider", "ddgs")).strip().lower()
+    # Provider-specific API keys come from the environment, never config.toml.
+    web_api_key = os.environ.get("TAVILY_API_KEY" if web_provider == "tavily" else "EXA_API_KEY", "").strip()
+
     return Config(
         discord_token=_require("DISCORD_BOT_TOKEN"),
         openrouter_api_key=_require("OPENROUTER_API_KEY"),
@@ -99,5 +109,10 @@ def load_config() -> Config:
         memory_allow_writes=bool(memory.get("allow_writes", False)),
         memory_admins=tuple(str(admin) for admin in memory.get("admins", [])),
         skills_dir=skills_dir,
+        web_provider=web_provider,
+        web_api_key=web_api_key,
+        web_timeout=int(web.get("timeout_seconds", 20)),
+        web_max_chars=int(web.get("max_chars", 8000)),
+        web_max_results=int(web.get("max_results", 5)),
         action_map={str(k): str(v) for k, v in raw.get("actions", {}).items()},
     )

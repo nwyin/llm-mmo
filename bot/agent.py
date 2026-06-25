@@ -23,10 +23,15 @@ MEMORY_GUIDANCE = (
 SKILLS_GUIDANCE = (
     "The system prompt lists available skills. When a skill matches the task, call skill_view(name) to load its instructions and follow them."
 )
+WEB_TOOL_GUIDANCE = (
+    "For questions about the outside world — markets, competitors, prospective clients, news, public companies — "
+    "use web_search to find sources, then web_extract to read the most relevant pages before answering. "
+    "Cite the URLs you used. Prefer the knowledge base for internal/team facts and the web for external ones."
+)
 RESEARCH_SUBAGENT_PROMPT = (
-    "You are an internal research subagent. Research the knowledge base for the user's goal. "
-    "Search first, read the most relevant pages, then return a concise brief with key findings "
-    "and the file paths used. Do not use persona voice."
+    "You are an internal research subagent. Research the user's goal using both the knowledge base and the web. "
+    "Search first (knowledge base and/or web_search), read the most relevant pages (read_page / web_extract), "
+    "then return a concise brief with key findings and the sources used (file paths and URLs). Do not use persona voice."
 )
 
 
