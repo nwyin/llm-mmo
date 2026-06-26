@@ -19,8 +19,9 @@ from discord import app_commands
 
 import agent
 import dispatch
-from config import KNOWLEDGE_DIR, PERSONAS_DIR, Config, load_config
+from config import KNOWLEDGE_DIR, PERSONAS_DIR, REPO_ROOT, Config, load_config
 from cron import CronScheduler, CronStore, Job
+from gitsync import pull_knowledge
 from knowledge import KnowledgeBase
 from memory import MemoryStore
 from nudge import NudgeTracker
@@ -179,6 +180,8 @@ class MMOBot(discord.Client):
         if self.cfg.cron_enabled:
             self.cron.use_asyncio_lock()  # now that an event loop exists
             self.loop.create_task(self._cron_loop())
+        if self.cfg.pull_interval_seconds > 0:
+            self.loop.create_task(self._knowledge_pull_loop())
         if self.cfg.discord_guild_id:
             guild = discord.Object(id=self.cfg.discord_guild_id)
             self.tree.copy_global_to(guild=guild)
@@ -295,6 +298,18 @@ class MMOBot(discord.Client):
             except Exception:  # noqa: BLE001 — the loop must survive any single tick failure
                 log.warning("cron tick failed", exc_info=True)
             await asyncio.sleep(self.cfg.cron_tick_seconds)
+
+    async def _knowledge_pull_loop(self) -> None:
+        """Periodically fast-forward the checkout and reload the knowledge index if it changed."""
+        await self.wait_until_ready()
+        while not self.is_closed():
+            await asyncio.sleep(self.cfg.pull_interval_seconds)
+            try:
+                if await pull_knowledge(REPO_ROOT):
+                    self.knowledge.reload()
+                    log.info("knowledge refreshed: %d notes", len(self.knowledge.notes))
+            except Exception:  # noqa: BLE001 — never let a sync failure kill the loop
+                log.warning("knowledge pull loop iteration failed", exc_info=True)
 
     def _system_prompt(self, persona_prompt: str, tracker: NudgeTracker | None = None) -> str:
         prompt = persona_prompt + "\n\n" + agent.KNOWLEDGE_TOOL_GUIDANCE

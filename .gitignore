@@ -9,11 +9,11 @@ __pycache__/
 # Secrets / local env
 .env
 *.secrets.env
-bot/state.db*
 
-# Agent-written (runtime) skills — the self-improvement loop's procedural memory.
-# Curated skills live in .agents/skills and ARE tracked; these are not.
-memory/skills/
+# Mutable runtime state — transcript DB, cron jobs, live memory + runtime skills.
+# Lives under STATE_DIR (default bot/.state locally; a persistent volume in production).
+# The repo's memory/*.md are SEEDS only; the bot writes the copies under STATE_DIR.
+bot/.state/
 
 # Working files generated during agent runs
 workflows/.work/

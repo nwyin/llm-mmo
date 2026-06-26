@@ -104,6 +104,7 @@ from the repo root:
 
 ```bash
 fly launch --no-deploy        # pick a globally-unique app name + a region (rewrites `app` in fly.toml)
+fly volumes create llm_mmo_data --size 1 --region <your-region>   # persistent state (see below)
 fly secrets set \
     DISCORD_BOT_TOKEN=...      \
     OPENROUTER_API_KEY=sk-or-... \
@@ -111,27 +112,42 @@ fly secrets set \
     GITHUB_REPO=youruser/yourfork \
     DISCORD_GUILD_ID=...       # optional
 fly deploy                     # builds bot/Dockerfile from the repo root, starts one machine
+fly scale count 1              # keep it to ONE machine (see "single instance" below)
 fly logs                       # expect: "Logged in as <bot>" + "Synced N slash command(s)"
 ```
 
 A single `shared-cpu-1x` / 256 MB machine running 24/7 costs roughly a couple dollars a month.
 
-> **The one gotcha** on any PaaS (Fly, Railway, Render…): deploy this as a **worker / background
-> service**, never a "web service." A web service expects the app to bind an HTTP port and will
-> fail health checks and kill it — the bot never opens one. The bundled `fly.toml` already does
-> the right thing.
+**The volume is not optional.** The bot writes mutable state — recall history (`state.db`),
+cron jobs, live `MEMORY.md`/`USER.md`, and agent-written skills — under `STATE_DIR`, which
+`fly.toml` mounts at `/data`. Without the volume, every redeploy/restart wipes all of it
+(recall, memory, the self-improvement loop, scheduled jobs). The repo's `memory/*.md` are
+seeds, copied onto the volume on first boot and never overwritten after.
+
+> **Two gotchas** on any PaaS:
+> 1. Deploy as a **worker / background service**, never a "web service" — the bot opens no HTTP
+>    port and a web service would fail health checks and kill it. The bundled `fly.toml` does
+>    the right thing (no `[http_service]`).
+> 2. Run **exactly one instance.** One Discord token = one gateway connection, and the cron
+>    scheduler's no-double-fire guard is per-process. A Fly volume is single-attach, so it also
+>    enforces this — just don't `fly scale count` above 1.
 
 ### Alternatives
 
-- **Docker on any host** (VPS, home box, Raspberry Pi) — build from the **repo root**:
-  `docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env llm-mmo`
-- **systemd / pm2** — run `uv run python -m bot` under a process manager so it restarts on
-  crash/reboot.
+- **Docker on any host** (VPS, home box, Raspberry Pi) — build from the **repo root** and mount
+  a named volume for state:
+  `docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env -v llm_mmo_data:/data llm-mmo`
+  (the image sets `STATE_DIR=/data`).
+- **systemd / pm2** — run `uv --project bot run python -m bot` from the repo root under a process
+  manager so it restarts on crash/reboot. State defaults to `bot/.state/`; back that path up.
 - **Your laptop**, for testing — it just has to stay awake and online.
 
-The bot serves the `knowledge/` and `personas/` baked into its image/checkout. To refresh them
-after merges, redeploy (`fly deploy`) — or, on a long-lived checkout, `git pull` periodically (a
-cron entry, or the `pull_interval_seconds` knob in `bot/config.toml`).
+The bot serves the `knowledge/` and `personas/` baked into its image/checkout. Two ways to
+refresh after merges: redeploy (`fly deploy`), or set `[knowledge].pull_interval_seconds > 0` in
+`bot/config.toml` — the bot then `git pull --ff-only`s itself on that interval and reloads the
+index (it has `git` and an authenticated `origin`, so this works for private repos too). The
+pull is safe precisely because state lives on the volume, not in the checkout, so the working
+tree stays clean and never conflicts.
 
 ---
 

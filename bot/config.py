@@ -37,6 +37,7 @@ class Config:
     default_persona: str
     persona_by_channel: dict[str, str]
     pull_interval_seconds: int
+    state_dir: Path
     store_path: Path
     memory_dir: Path
     memory_max_chars: int
@@ -64,6 +65,24 @@ class Config:
     action_map: dict[str, str] = field(default_factory=dict)
 
 
+def _ensure_state_dir(memory_dir: Path, runtime_skills_dir: Path) -> None:
+    """Create the state dirs and seed memory files from the repo on first boot.
+
+    The repo's memory/*.md are SEEDS: when the state volume has no copy yet (fresh deploy),
+    copy the seed in; thereafter the bot only ever writes the volume copy, so the two diverge
+    safely and `git pull` of the checkout never touches live memory.
+    """
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    runtime_skills_dir.mkdir(parents=True, exist_ok=True)
+    seed_dir = REPO_ROOT / "memory"
+    for filename in ("MEMORY.md", "USER.md"):
+        target = memory_dir / filename
+        seed = seed_dir / filename
+        if target.exists() or not seed.exists() or seed.resolve() == target.resolve():
+            continue
+        target.write_text(seed.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+
+
 def _require(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -80,34 +99,35 @@ def load_config() -> Config:
     chat = raw.get("chat", {})
     personas = raw.get("personas", {})
     knowledge = raw.get("knowledge", {})
-    store = raw.get("store", {})
-    store_path = Path(store.get("path", "state.db"))
-    if not store_path.is_absolute():
-        store_path = BOT_DIR / store_path
     memory = raw.get("memory", {})
     # Canonical admin list. Prefer [admins].ids; fall back to the legacy [memory].admins so
     # existing configs keep working. Empty = no admins (privileged tools fail closed).
     admins_section = raw.get("admins", {})
     admin_ids = tuple(str(admin) for admin in admins_section.get("ids", memory.get("admins", [])))
-    memory_dir = Path(memory.get("dir", REPO_ROOT / "memory"))
-    if not memory_dir.is_absolute():
-        memory_dir = BOT_DIR / memory_dir
-    memory_dir = memory_dir.resolve()
+
+    # All MUTABLE runtime state lives under STATE_DIR — a persistent volume in production —
+    # kept OUT of the git checkout so a `git pull` of knowledge never conflicts with files the
+    # bot writes. Default to a gitignored bot/.state for local dev; set STATE_DIR=/data to the
+    # host volume in production. Everything mutable derives from it (no per-path knobs).
+    state_dir_env = os.environ.get("STATE_DIR", "").strip()
+    state_dir = Path(state_dir_env) if state_dir_env else BOT_DIR / ".state"
+    if not state_dir.is_absolute():
+        state_dir = BOT_DIR / state_dir
+    state_dir = state_dir.resolve()
+    store_path = state_dir / "state.db"
+    cron_path = state_dir / "cron.json"
+    memory_dir = state_dir / "memory"
+    skills_runtime_dir = memory_dir / "skills"
+    _ensure_state_dir(memory_dir, skills_runtime_dir)
+
+    # Curated, git-tracked skills (read-only to the agent) stay in the checkout, not STATE_DIR.
     skills = raw.get("skills", {})
     skills_dir = Path(skills.get("dir", SKILLS_DIR))
     if not skills_dir.is_absolute():
         skills_dir = BOT_DIR / skills_dir
     skills_dir = skills_dir.resolve()
-    # Agent-written (runtime) skills live outside the curated, git-tracked .agents/skills.
-    skills_runtime_dir = Path(skills.get("runtime_dir", REPO_ROOT / "memory" / "skills"))
-    if not skills_runtime_dir.is_absolute():
-        skills_runtime_dir = BOT_DIR / skills_runtime_dir
-    skills_runtime_dir = skills_runtime_dir.resolve()
     review = raw.get("review", {})
     cron = raw.get("cron", {})
-    cron_path = Path(cron.get("path", store_path.parent / "cron.json"))
-    if not cron_path.is_absolute():
-        cron_path = BOT_DIR / cron_path
 
     guild = os.environ.get("DISCORD_GUILD_ID", "").strip()
 
@@ -130,6 +150,7 @@ def load_config() -> Config:
         default_persona=personas.get("default", "default"),
         persona_by_channel={str(k): str(v) for k, v in personas.get("by_channel", {}).items()},
         pull_interval_seconds=int(knowledge.get("pull_interval_seconds", 0)),
+        state_dir=state_dir,
         store_path=store_path,
         memory_dir=memory_dir,
         memory_max_chars=int(memory.get("max_chars", 2000)),

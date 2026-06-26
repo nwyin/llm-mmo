@@ -1,15 +1,19 @@
-# Build context is the repo root (see bot/Dockerfile). Keep secrets, VCS, and
-# caches out of the image — fly deploy / docker build copy the whole context.
-.git/
+# Build context is the repo root (see bot/Dockerfile). The image keeps the FULL repo because
+# the bot reads knowledge/, personas/, .agents/skills/ at runtime AND needs .git for the
+# background knowledge pull. So .git/ and .agents/ are intentionally NOT excluded here.
+
+# Not used by the bot at runtime (only by GitHub Actions / local tooling).
 .github/
 .claude/
-.agents/
 
 # Secrets — never bake these into an image layer.
 **/.env
 .env
 **/*.secrets.env
 *.secrets.env
+
+# Mutable runtime state — belongs on the volume, never in the image.
+bot/.state/
 
 # Python / tooling caches and virtualenvs
 **/__pycache__/
