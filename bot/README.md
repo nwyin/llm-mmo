@@ -62,17 +62,28 @@ restart.
 ## Deploy
 
 It needs to stay connected, so run it on an always-on host. It's outbound-only (a gateway
-WebSocket — no inbound ports), so it works behind NAT and needs no public URL.
+WebSocket — no inbound ports), so it works behind NAT and needs no public URL. Run **exactly one
+instance** (one gateway connection per token; the cron guard is per-process).
 
-**Fly.io** (easiest always-on) — a ready-to-edit [`fly.toml`](../fly.toml) is at the repo root.
-See [SETUP.md §6](../SETUP.md). In short: `fly launch --no-deploy`, `fly secrets set …`, `fly deploy`.
+**State lives under `STATE_DIR`** — transcript DB, cron jobs, live `MEMORY.md`/`USER.md`, and
+runtime skills. Defaults to `bot/.state/` locally; **in production point it at a persistent
+volume** (`STATE_DIR=/data`), or every restart wipes recall/memory/cron. The repo's `memory/*.md`
+are seeds, copied in on first boot.
 
-**Docker** — build from the **repo root** (not `bot/`) so `knowledge/` and `personas/` are
-included:
+**Fly.io** (easiest always-on) — a ready-to-edit [`fly.toml`](../fly.toml) (with the `/data`
+volume mount) is at the repo root. See [SETUP.md §6](../SETUP.md). In short: `fly launch
+--no-deploy`, `fly volumes create llm_mmo_data`, `fly secrets set …`, `fly deploy`.
+
+**Docker** — build from the **repo root** (not `bot/`) so `knowledge/`, `personas/`,
+`.agents/skills/`, and `.git/` are included, and mount a volume for state:
 
 ```bash
-docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env llm-mmo
+docker build -f bot/Dockerfile -t llm-mmo . && docker run --restart=always --env-file bot/.env -v llm_mmo_data:/data llm-mmo
 ```
 
-**systemd / pm2** — run `uv --project bot run python -m bot` from the repo root under your process manager so it restarts on
-crash/reboot.
+**systemd / pm2** — run `uv --project bot run python -m bot` from the repo root under your process
+manager so it restarts on crash/reboot; back up `bot/.state/`.
+
+**Fresh knowledge** — set `[knowledge].pull_interval_seconds > 0` in `config.toml` and the bot
+`git pull`s itself after merges (works on private repos; the image ships `git` + an authenticated
+remote). Otherwise redeploy to publish.
