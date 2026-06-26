@@ -28,3 +28,6 @@ workflows/.stderr.log
 
 # Vendored reference clone (not part of the template)
 hermes-agent/
+
+# Local planning specs (archived as GitHub issues, not source)
+specs/
