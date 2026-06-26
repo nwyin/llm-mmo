@@ -18,6 +18,32 @@ def _write(root: Path, rel: str, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def test_run_agent_forwards_on_usage_per_call(monkeypatch) -> None:
+    records: list[dict[str, Any]] = []
+
+    async def fake_complete(**kwargs: Any) -> dict[str, Any]:
+        on_usage = kwargs.get("on_usage")
+        assert on_usage is not None  # run_agent must thread the hook through to each call
+        on_usage({"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7})
+        return {"role": "assistant", "content": "done"}
+
+    monkeypatch.setattr(agent, "complete", fake_complete)
+
+    result = asyncio.run(
+        agent.run_agent(
+            api_key="k",
+            model="m",
+            system_prompt="s",
+            user_message="u",
+            tools=[],
+            on_usage=records.append,
+        )
+    )
+
+    assert result == "done"
+    assert records == [{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}]
+
+
 def test_run_agent_searches_reads_and_returns_final_content(monkeypatch, tmp_path: Path) -> None:
     _write(tmp_path, "ideas/cooking.md", "# Cooking\nUse close-up shots and cite this page.")
     _write(tmp_path, "ideas/pricing.md", "# Pricing\nPackage tiers and offers.")

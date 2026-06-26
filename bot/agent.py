@@ -55,8 +55,13 @@ async def complete(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
     timeout: int = 60,
+    on_usage: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """Return the raw assistant message. Raises httpx.HTTPError on transport/HTTP failure."""
+    """Return the raw assistant message. Raises httpx.HTTPError on transport/HTTP failure.
+
+    ``on_usage`` (if given) is called once per API call with the response's ``usage`` object
+    (token counts), so callers can meter cost without changing the return contract.
+    """
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -71,6 +76,8 @@ async def complete(
         resp.raise_for_status()
         data = resp.json()
 
+    if on_usage is not None:
+        on_usage(data.get("usage") or {})
     return data["choices"][0]["message"]
 
 
@@ -83,6 +90,7 @@ async def run_agent(
     tools: list[Tool],
     history: list[dict[str, Any]] | None = None,
     max_iterations: int = 6,
+    on_usage: Callable[[dict[str, Any]], None] | None = None,
 ) -> str:
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages.extend(history or [])
@@ -94,7 +102,7 @@ async def run_agent(
     tool_map = {tool.name: tool for tool in tools}
 
     for _ in range(max_iterations):
-        msg = await complete(api_key=api_key, model=model, messages=messages, tools=tool_specs)
+        msg = await complete(api_key=api_key, model=model, messages=messages, tools=tool_specs, on_usage=on_usage)
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
             return (msg.get("content") or "").strip()

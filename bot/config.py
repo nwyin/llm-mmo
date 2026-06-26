@@ -57,6 +57,7 @@ class Config:
     review_enabled: bool
     review_notify: bool
     review_max_iterations: int
+    review_interval: int
     nudge_memory_interval: int
     nudge_skill_interval: int
     cron_enabled: bool
@@ -168,6 +169,7 @@ def load_config() -> Config:
         review_enabled=bool(review.get("enabled", True)),
         review_notify=bool(review.get("notify", True)),
         review_max_iterations=int(review.get("max_iterations", 4)),
+        review_interval=max(1, int(review.get("interval", 3))),
         nudge_memory_interval=int(review.get("memory_nudge_interval", 10)),
         nudge_skill_interval=int(review.get("skill_nudge_interval", 10)),
         cron_enabled=bool(cron.get("enabled", True)),

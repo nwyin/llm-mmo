@@ -21,7 +21,7 @@ cd bot && uv run pytest  # unit tests for retrieval + persona loading
 
 | File | Role |
 |------|------|
-| `__main__.py` | Discord client: `on_message` (@mentions) + `/ask`, `/save`, and `/new` slash commands. |
+| `__main__.py` | Discord client: `on_message` (@mentions) + `/ask`, `/save`, `/new`, and `/help` slash commands. |
 | `agent.py` | Minimal OpenRouter tool-calling loop used for chat replies. |
 | `tools.py` | Tool definitions for knowledge search/read, delegation, recall, memory, and skill loading. |
 | `store.py` | SQLite session/message store plus FTS-backed cross-session recall. |
@@ -37,14 +37,19 @@ cd bot && uv run pytest  # unit tests for retrieval + persona loading
 1. A message mentions the bot (optionally prefixed `persona-id:`).
 2. The persona prompt, memory snapshot, skills index, and recent channel history go to the agent loop.
 3. The model calls tools as needed: `search_knowledge`, `read_page`, `delegate`, `recall`, optional `remember`, and `skill_view`.
-4. When the loop returns a final answer, the reply is posted back in-channel.
+4. When the loop returns a final answer, the reply is posted back in-channel — split across
+   multiple messages if it exceeds Discord's 2000-char limit, so long briefs aren't truncated.
 
 Recall is scoped to the current channel by design: the Discord channel is the trust boundary, and cross-channel recall is not exposed to chat.
 
-Slash commands: `/ask` runs the same chat loop, `/save` dispatches a GitHub action, and `/new`
-starts a fresh per-channel session while leaving older messages searchable through `recall`.
+Slash commands: `/ask` runs the same chat loop, `/save` dispatches a GitHub action, `/new`
+starts a fresh per-channel session (older messages stay searchable through `recall`), and
+`/help` lists what the bot can do.
 
-Config knobs live in `config.toml`: `[chat] max_iterations`, `[store]`, `[memory] allow_writes/admins`, and `[skills]`.
+Each turn logs its token usage, and the background-review fork runs once every `[review] interval`
+turns (not every turn) to keep cost predictable when left running.
+
+Config knobs live in `config.toml`: `[chat] max_iterations`, `[admins] ids`, `[memory] allow_writes`, `[review] interval`, and `[skills]`.
 
 ## How `/save` works
 
