@@ -19,13 +19,16 @@ default = "default"
 # [personas.by_channel]
 # "123456789012345678" = "thumbnail-scout"
 
-[knowledge]
-# Pull the repo every N seconds so chat stays fresh after merges. 0 = never.
-pull_interval_seconds = 0
+# Mutable runtime state (transcript DB, cron jobs, live MEMORY.md/USER.md, runtime skills)
+# lives under STATE_DIR, set in the environment — NOT here, because it is deployment-specific.
+# Default: bot/.state (gitignored) for local dev. In production point it at a persistent
+# volume: STATE_DIR=/data. The git checkout stays immutable (code + knowledge + seeds).
 
-[store]
-# SQLite transcript store path, relative to this bot dir. Gitignored locally; attach a volume in production.
-path = "state.db"
+[knowledge]
+# Pull the repo every N seconds so chat stays fresh after merges. 0 = never. When > 0 the bot
+# runs `git pull --ff-only` + reloads knowledge in the background (safe: state is outside the
+# checkout). Private repos authenticate via GITHUB_DISPATCH_TOKEN.
+pull_interval_seconds = 0
 
 [admins]
 # Discord user ids (as strings) with privileged access. PRIVILEGED TOOLS FAIL CLOSED:
@@ -36,10 +39,8 @@ path = "state.db"
 ids = []
 
 [memory]
-# Directory for committed long-term memory files, relative to this bot dir.
-# Runtime edits need a persistent volume in production, like state.db.
-dir = "../memory"
-# Per-file character limit for bot-editable memory.
+# Live memory files (MEMORY.md/USER.md) live under STATE_DIR/memory, seeded once from the
+# repo's memory/*.md on first boot. Per-file character limit for bot-editable memory.
 max_chars = 2000
 # Operational memory (MEMORY.md, target=agent) is always writable so the bot can build
 # institutional knowledge proactively. `allow_writes` gates ONLY user-profile memory
@@ -49,10 +50,8 @@ allow_writes = false
 
 [skills]
 # Directory for curated, git-tracked agentskills.io skill packages (read-only to the agent).
+# Agent-written (runtime) skills live under STATE_DIR/memory/skills, not here.
 dir = "../.agents/skills"
-# Directory for agent-written (runtime) skills — the self-improvement loop's procedural
-# memory. Git-ignored; needs a persistent volume in production.
-runtime_dir = "../memory/skills"
 
 [web]
 # Web research provider: "ddgs" (keyless, default), "tavily", or "exa". For tavily/exa set
@@ -86,9 +85,7 @@ skill_nudge_interval = 10
 # 9am digest…"); with no admins set, the tool is unavailable. Cross-channel targets must be
 # text channels the bot can see in this workspace.
 enabled = true
-# Job store path, relative to this bot dir (defaults next to the transcript store).
-# path = "cron.json"
-# How often the scheduler checks for due jobs.
+# The job store lives at STATE_DIR/cron.json. How often the scheduler checks for due jobs:
 tick_seconds = 60
 
 [actions]
