@@ -150,7 +150,7 @@ def load_config() -> Config:
         max_iterations=int(chat.get("max_iterations", 6)),
         default_persona=personas.get("default", "default"),
         persona_by_channel={str(k): str(v) for k, v in personas.get("by_channel", {}).items()},
-        pull_interval_seconds=int(knowledge.get("pull_interval_seconds", 0)),
+        pull_interval_seconds=int(knowledge.get("pull_interval_seconds", 300)),
         state_dir=state_dir,
         store_path=store_path,
         memory_dir=memory_dir,
