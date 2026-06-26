@@ -21,6 +21,7 @@ import agent
 import dispatch
 from config import KNOWLEDGE_DIR, PERSONAS_DIR, REPO_ROOT, Config, load_config
 from cron import CronScheduler, CronStore, Job
+from discordutil import chunk_message
 from gitsync import pull_knowledge
 from knowledge import KnowledgeBase
 from memory import MemoryStore
@@ -41,6 +42,7 @@ from tools import (
     build_web_tools,
     build_workspace_recall_tool,
 )
+from usage import UsageMeter
 from web import WebClient
 
 # Background-review status notices are posted with this marker so they can be filtered out of
@@ -65,6 +67,8 @@ class MMOBot(discord.Client):
         self.memory = MemoryStore(cfg.memory_dir, max_chars=cfg.memory_max_chars)
         self.skills = SkillLibrary(cfg.skills_dir, runtime_dir=cfg.skills_runtime_dir)
         self.trackers: dict[str, NudgeTracker] = {}
+        # Per-channel turn counter for throttling the background-review fork (see _spawn_review).
+        self._review_turns: dict[str, int] = {}
         self.cron_store = CronStore(cfg.cron_path)
         self.cron = CronScheduler(
             self.cron_store,
@@ -214,7 +218,11 @@ class MMOBot(discord.Client):
 
         async with message.channel.typing():
             reply = await self._answer(system_prompt, content, message)
-        await message.reply(reply[:1900])  # Discord's 2000-char message limit, with headroom
+        # Long answers (research briefs, digests) exceed Discord's 2000-char cap: send in pieces.
+        chunks = chunk_message(reply)
+        await message.reply(chunks[0] or "(no response)")
+        for extra in chunks[1:]:
+            await message.channel.send(extra)
 
     async def _answer(self, system_prompt: str, question: str, message: discord.Message) -> str:
         channel_id = str(message.channel.id)
@@ -223,6 +231,7 @@ class MMOBot(discord.Client):
         history = await self._recent_history(message)
         tracker = self._tracker(channel_id)
         tracker.record_turn()
+        meter = UsageMeter()
         try:
             reply = await agent.run_agent(
                 api_key=self.cfg.openrouter_api_key,
@@ -232,17 +241,27 @@ class MMOBot(discord.Client):
                 tools=self._request_tools(channel_id=channel_id, user_id=user_id, tracker=tracker),
                 history=history,
                 max_iterations=self.cfg.max_iterations,
+                on_usage=meter.record,
             )
             self._log_store(channel_id, "assistant", reply)
-            self._spawn_review(history, question, reply, message.channel)
+            log.info("turn usage [%s]: %s", channel_id, meter.summary())
+            self._spawn_review(channel_id, history, question, reply, message.channel)
             return reply
         except Exception:  # noqa: BLE001 — surface a friendly error, log the detail
-            log.exception("chat reply failed")
+            log.exception("chat reply failed (usage so far: %s)", meter.summary())
             return "⚠️ I hit an error talking to the model. Check the bot logs."
 
-    def _spawn_review(self, history: list[dict[str, str]], question: str, reply: str, channel: Any) -> None:
-        """Fire the background-review fork without blocking the reply. Best-effort; never raises."""
+    def _spawn_review(self, channel_id: str, history: list[dict[str, str]], question: str, reply: str, channel: Any) -> None:
+        """Fire the background-review fork without blocking the reply. Best-effort; never raises.
+
+        Throttled to once every ``review_interval`` turns per channel so an active channel does
+        not double its LLM spend reviewing every single message.
+        """
         if not self.cfg.review_enabled:
+            return
+        turns = self._review_turns.get(channel_id, 0) + 1
+        self._review_turns[channel_id] = turns
+        if turns % self.cfg.review_interval != 0:
             return
         transcript = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": reply}]
         asyncio.create_task(self._run_review(transcript, channel))
@@ -271,6 +290,7 @@ class MMOBot(discord.Client):
         """Run a scheduled job as a normal agent turn (full toolset, incl. web)."""
         _, system_prompt = self.personas.get(job.persona)
         tracker = self._tracker(job.channel_id)
+        meter = UsageMeter()
         self._log_store(job.channel_id, "user", f"[scheduled] {job.prompt}")
         reply = await agent.run_agent(
             api_key=self.cfg.openrouter_api_key,
@@ -279,8 +299,10 @@ class MMOBot(discord.Client):
             user_message=job.prompt,
             tools=self._request_tools(channel_id=job.channel_id, user_id=job.created_by, tracker=tracker),
             max_iterations=self.cfg.max_iterations,
+            on_usage=meter.record,
         )
         self._log_store(job.channel_id, "assistant", reply)
+        log.info("cron job %s usage: %s", job.id, meter.summary())
         return reply
 
     async def _deliver_cron(self, job: Job, text: str) -> None:
@@ -288,7 +310,10 @@ class MMOBot(discord.Client):
         if channel is None:
             log.warning("cron job %s: channel %s not found for delivery", job.id, job.channel_id)
             return
-        await channel.send(f"⏰ **{job.id}** · {job.schedule}\n{text[:1850]}")
+        chunks = chunk_message(text)
+        await channel.send(f"⏰ **{job.id}** · {job.schedule}\n{chunks[0]}")
+        for extra in chunks[1:]:
+            await channel.send(extra)
 
     async def _cron_loop(self) -> None:
         await self.wait_until_ready()
@@ -349,6 +374,42 @@ class MMOBot(discord.Client):
         except Exception:  # noqa: BLE001
             log.warning("store log failed", exc_info=True)
 
+    def _help_text(self) -> str:
+        """Capability overview shown by /help. Reflects what's actually enabled."""
+        personas = ", ".join(self.personas.ids())
+        lines = [
+            "**I'm an ops assistant** over this team's shared knowledge base. @mention me to chat, or use the slash commands below.",
+            "",
+            "**Talk to me**",
+            "• `@me <question>` — I answer from the knowledge base + recent conversation.",
+            f"• `@me <persona>: <question>` — answer as a specific persona ({personas}).",
+            "",
+            "**Slash commands**",
+            "• `/ask` — ask a persona a question (optionally choose the persona).",
+            "• `/new` — start a fresh session (drops earlier context; still searchable via recall).",
+            "• `/save link:<url> note:<why>` — save a link to the knowledge base (opens a PR).",
+            "• `/help` — this message.",
+            "",
+            "**Mid-conversation I can**",
+            "• Search & cite the knowledge base, and recall this channel's past conversations.",
+        ]
+        if self.web is not None:
+            lines.append("• Research the web — markets, competitors, prospective clients — and cite sources.")
+            lines.append("• Delegate deep, multi-step research to a focused subagent.")
+        lines.append("• Save a finished note or brief to the knowledge base — always via a reviewable PR.")
+        lines.append("• Remember durable team/project facts so future chats already know them.")
+        if self.cfg.admin_ids:
+            lines += [
+                "",
+                "**Admin-only** (configured users): cross-channel recall, scheduled jobs (cron), and editing my skills.",
+            ]
+        lines += [
+            "",
+            '_Try:_ "research Acme Corp as a prospective client" · "summarize what we know about pricing" · '
+            '"collate this feedback into a note and save it"',
+        ]
+        return "\n".join(lines)
+
 
 def register_commands(bot: MMOBot) -> None:
     @bot.tree.command(name="ask", description="Ask a persona a question about the knowledge base.")
@@ -360,6 +421,7 @@ def register_commands(bot: MMOBot) -> None:
         bot._log_store(channel_id, "user", question)
         tracker = bot._tracker(channel_id)
         tracker.record_turn()
+        meter = UsageMeter()
         try:
             reply = await agent.run_agent(
                 api_key=bot.cfg.openrouter_api_key,
@@ -368,13 +430,22 @@ def register_commands(bot: MMOBot) -> None:
                 user_message=question,
                 tools=bot._request_tools(channel_id=channel_id, user_id=str(interaction.user.id), tracker=tracker),
                 max_iterations=bot.cfg.max_iterations,
+                on_usage=meter.record,
             )
             bot._log_store(channel_id, "assistant", reply)
-            bot._spawn_review([], question, reply, interaction.channel)
+            log.info("turn usage [%s]: %s", channel_id, meter.summary())
+            bot._spawn_review(channel_id, [], question, reply, interaction.channel)
         except Exception:  # noqa: BLE001
             log.exception("/ask failed")
             reply = "⚠️ I hit an error talking to the model. Check the bot logs."
-        await interaction.followup.send(reply[:1900])
+        chunks = chunk_message(reply)
+        await interaction.followup.send(chunks[0] or "(no response)")
+        for extra in chunks[1:]:
+            await interaction.followup.send(extra)
+
+    @bot.tree.command(name="help", description="What this bot can do and how to use it.")
+    async def help_command(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(bot._help_text(), ephemeral=True)
 
     @bot.tree.command(name="new", description="Start a fresh chat session in this channel.")
     async def new(interaction: discord.Interaction) -> None:

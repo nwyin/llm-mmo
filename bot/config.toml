@@ -13,8 +13,9 @@ history_turns = 6
 max_iterations = 6
 
 [personas]
-# Persona id used when none is specified (file in personas/, without .md).
-default = "default"
+# Persona id used when none is specified (file in personas/, without .md). "ops" is tuned for
+# startup operations (research, customer feedback, institutional memory); "default" is generic.
+default = "ops"
 # Optional: pin a persona to specific channels by id.
 # [personas.by_channel]
 # "123456789012345678" = "thumbnail-scout"
@@ -76,6 +77,9 @@ enabled = true
 notify = true
 # Max tool-iterations for the review fork.
 max_iterations = 4
+# Run the review fork once every N turns per channel (1 = every turn). Higher = less LLM spend,
+# slower learning. The fork roughly doubles a turn's cost, so keep this >1 for active channels.
+interval = 3
 # Inject a one-turn reminder to persist memory/skills every N turns (0 disables).
 memory_nudge_interval = 10
 skill_nudge_interval = 10
