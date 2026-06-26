@@ -13,15 +13,22 @@ to use a paid backend. All network I/O goes through one httpx call site; tests i
 
 from __future__ import annotations
 
+import asyncio
 import html
+import ipaddress
 import re
+import socket
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
 
 DEFAULT_PROVIDER = "ddgs"
 PROVIDERS = ("ddgs", "tavily", "exa")
+
+# Cap how many redirects extract() will follow; each hop is re-validated against the SSRF guard.
+_MAX_REDIRECTS = 5
 
 _DDGS_URL = "https://lite.duckduckgo.com/lite/"
 _TAVILY_URL = "https://api.tavily.com/search"
@@ -57,6 +64,8 @@ class WebClient:
         timeout: int = 20,
         max_chars: int = 8000,
         transport: httpx.AsyncBaseTransport | None = None,
+        block_private_addresses: bool | None = None,
+        resolver: Callable[..., list] | None = None,
     ) -> None:
         provider = (provider or DEFAULT_PROVIDER).strip().lower()
         if provider not in PROVIDERS:
@@ -68,10 +77,15 @@ class WebClient:
         self.timeout = timeout
         self.max_chars = max_chars
         self._transport = transport
+        self._resolver = resolver
+        # The SSRF guard resolves hostnames to IPs, which needs the real network, so by default
+        # it is active only in production (no injected transport). Tests can force it on while
+        # injecting a fake resolver to exercise the guard without touching the network.
+        self._guard_enabled = transport is None if block_private_addresses is None else block_private_addresses
 
-    def _client(self) -> httpx.AsyncClient:
+    def _client(self, *, follow_redirects: bool = True) -> httpx.AsyncClient:
         headers = {"User-Agent": "Mozilla/5.0 (compatible; llm-mmo-bot/1.0)"}
-        return httpx.AsyncClient(timeout=self.timeout, headers=headers, transport=self._transport, follow_redirects=True)
+        return httpx.AsyncClient(timeout=self.timeout, headers=headers, transport=self._transport, follow_redirects=follow_redirects)
 
     async def search(self, query: str, *, k: int = 5) -> list[SearchResult]:
         query = (query or "").strip()
@@ -93,13 +107,36 @@ class WebClient:
             raise WebError("extract requires an http(s) URL")
         budget = self.max_chars if max_chars is None else max_chars
         try:
-            async with self._client() as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                body = resp.text
+            # follow_redirects=False so we can re-validate the host on every hop; a page can
+            # otherwise redirect a public URL to a private/metadata address.
+            async with self._client(follow_redirects=False) as client:
+                body = await self._fetch_guarded(client, url)
         except httpx.HTTPError as exc:
             raise WebError(f"extract transport error: {exc}") from exc
         return _truncate(html_to_text(body), budget)
+
+    async def _fetch_guarded(self, client: httpx.AsyncClient, url: str) -> str:
+        current = url
+        for _ in range(_MAX_REDIRECTS + 1):
+            await self._guard_url(current)
+            resp = await client.get(current)
+            if resp.is_redirect and resp.next_request is not None:
+                current = str(resp.next_request.url)
+                continue
+            resp.raise_for_status()
+            return resp.text
+        raise WebError("too many redirects while extracting page")
+
+    async def _guard_url(self, url: str) -> None:
+        """Block requests to private/internal/metadata addresses (SSRF defense)."""
+        if not self._guard_enabled:
+            return
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            raise WebError(f"refusing to follow a non-http(s) redirect: {url}")
+        host = parsed.hostname or ""
+        if await asyncio.to_thread(host_is_blocked, host, resolver=self._resolver):
+            raise WebError(f"refusing to fetch a private or internal address: {host or url!r}")
 
     async def _search_ddgs(self, query: str, k: int) -> list[SearchResult]:
         async with self._client() as client:
@@ -142,6 +179,54 @@ class WebClient:
                 )
             )
         return results
+
+
+_IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+
+
+def _ip_is_blocked(ip: _IPAddress) -> bool:
+    """True for any address an external fetch must never reach.
+
+    Covers loopback, private RFC1918/ULA, link-local (incl. the 169.254.169.254 cloud
+    metadata endpoint), multicast, reserved, and unspecified ranges. IPv4-mapped IPv6
+    addresses are unwrapped first so e.g. ::ffff:127.0.0.1 is caught.
+    """
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+
+
+def host_is_blocked(host: str, *, resolver: Callable[..., list] | None = None) -> bool:
+    """Resolve ``host`` and return True if it points at a non-public address.
+
+    ``resolver`` defaults to ``socket.getaddrinfo`` (real DNS); tests inject a fake so the
+    check runs without touching the network. An unresolvable or malformed host is blocked.
+    """
+    resolve = resolver or socket.getaddrinfo
+    host = (host or "").strip().rstrip(".").lower()
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    if not host or host == "localhost" or host.endswith((".local", ".internal", ".localhost")):
+        return True
+    # Literal IP — no DNS needed.
+    try:
+        return _ip_is_blocked(ipaddress.ip_address(host))
+    except ValueError:
+        pass
+    try:
+        infos = resolve(host, None)
+    except (OSError, UnicodeError):
+        return True
+    if not infos:
+        return True
+    for info in infos:
+        addr = str(info[4][0]).split("%", 1)[0]
+        try:
+            if _ip_is_blocked(ipaddress.ip_address(addr)):
+                return True
+        except ValueError:
+            return True  # unparseable resolved address → fail closed
+    return False
 
 
 def _parse_ddgs(body: str, k: int) -> list[SearchResult]:

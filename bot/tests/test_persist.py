@@ -100,3 +100,15 @@ def test_workspace_recall_empty_query_returns_no_matches(tmp_path: Path) -> None
         assert tool.handler({"query": ""}) == "no matches across channels"
     finally:
         store.close()
+
+
+def test_workspace_recall_blocks_non_admin(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    try:
+        store.log("channel-a", "user", "secret atlas roadmap", now=100.0)
+        tool = build_workspace_recall_tool(store, user_id="999", admins=("123",))
+        result = tool.handler({"query": "atlas"})
+        assert result.startswith("error:")
+        assert "atlas" not in result
+    finally:
+        store.close()

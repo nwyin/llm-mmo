@@ -117,9 +117,12 @@ Beyond Q&A over the knowledge base, the bot can act as an ambient ops assistant:
 
 - **Web research** — `web_search` + `web_extract` (keyless DuckDuckGo by default; Tavily/Exa
   via env). `delegate` runs a multi-step KB-and-web research subagent for client/competitor profiles.
+  `web_extract` refuses private/internal/cloud-metadata addresses and re-checks every redirect hop
+  (SSRF guard).
 - **Self-improvement** — after each turn a background fork saves durable *operational* memory
   (`MEMORY.md`) and updates *runtime skills* (`memory/skills/`), nudged periodically. Per-person
-  profiles (`USER.md`) are never auto-built — that stays explicit/admin-gated.
+  profiles (`USER.md`) are never auto-built — that stays explicit/admin-gated. Interactive
+  `skill_manage` is admin-only since skills persist into future prompts.
 - **Cross-channel recall** — channel-scoped `recall` by default; admins can opt into
   `workspace_recall` across every channel.
 - **PR-gated saves** — `save_to_kb` lets the agent persist a finished note, but only by opening
@@ -127,7 +130,10 @@ Beyond Q&A over the knowledge base, the bot can act as an ambient ops assistant:
 - **Scheduled automations** — admins set up cron jobs (`daily 9am`, `weekly mon 9am`, …) that run
   an agent turn unattended and post to a channel (e.g. a daily feedback digest, weekly competitor scan).
 
-See [`bot/config.toml`](bot/config.toml) for the knobs (`[web]`, `[recall]`, `[review]`, `[cron]`).
+**Admin-gated, fail-closed.** Cron, `workspace_recall`, interactive `skill_manage`, and
+user-profile (`USER.md`) writes require an explicit admin list — set `[admins].ids` in
+[`bot/config.toml`](bot/config.toml) to your Discord user id(s). An empty list means *no admins*
+(those tools stay off), never *everyone*. See `[admins]`, `[web]`, `[recall]`, `[review]`, `[cron]`.
 
 ## Not included (on purpose)
 

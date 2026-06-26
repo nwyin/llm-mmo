@@ -41,7 +41,9 @@ class Config:
     memory_dir: Path
     memory_max_chars: int
     memory_allow_writes: bool
-    memory_admins: tuple[str, ...]
+    # Workspace admins. Privileged tools (cron, workspace_recall, skill_manage, user-profile
+    # memory) fail CLOSED when this is empty — an unset list means "no admins", never "everyone".
+    admin_ids: tuple[str, ...]
     skills_dir: Path
     web_provider: str
     web_api_key: str
@@ -83,6 +85,10 @@ def load_config() -> Config:
     if not store_path.is_absolute():
         store_path = BOT_DIR / store_path
     memory = raw.get("memory", {})
+    # Canonical admin list. Prefer [admins].ids; fall back to the legacy [memory].admins so
+    # existing configs keep working. Empty = no admins (privileged tools fail closed).
+    admins_section = raw.get("admins", {})
+    admin_ids = tuple(str(admin) for admin in admins_section.get("ids", memory.get("admins", [])))
     memory_dir = Path(memory.get("dir", REPO_ROOT / "memory"))
     if not memory_dir.is_absolute():
         memory_dir = BOT_DIR / memory_dir
@@ -128,7 +134,7 @@ def load_config() -> Config:
         memory_dir=memory_dir,
         memory_max_chars=int(memory.get("max_chars", 2000)),
         memory_allow_writes=bool(memory.get("allow_writes", False)),
-        memory_admins=tuple(str(admin) for admin in memory.get("admins", [])),
+        admin_ids=admin_ids,
         skills_dir=skills_dir,
         web_provider=web_provider,
         web_api_key=web_api_key,

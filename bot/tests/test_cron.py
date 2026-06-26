@@ -158,6 +158,35 @@ def test_cronjob_tool_create_list_pause_delete(tmp_path: Path) -> None:
     assert store.list() == []
 
 
+def test_cronjob_tool_fails_closed_with_no_admins(tmp_path: Path) -> None:
+    store = CronStore(tmp_path / "cron.json")
+    tool = build_cronjob_tool(store, user_id="123", admins=(), channel_id="c1")
+
+    result = tool.handler({"action": "create", "schedule": "daily 9am", "prompt": "x"})
+    assert result.startswith("error:")
+    assert store.list() == []
+
+
+def test_cronjob_tool_rejects_disallowed_target_channel(tmp_path: Path) -> None:
+    store = CronStore(tmp_path / "cron.json")
+    tool = build_cronjob_tool(
+        store,
+        user_id="123",
+        admins=("123",),
+        channel_id="c1",
+        channel_allowed=lambda cid: cid == "c1",  # only the current channel is reachable
+    )
+
+    blocked = tool.handler({"action": "create", "schedule": "daily 9am", "prompt": "x", "channel_id": "999"})
+    assert blocked.startswith("error:")
+    assert store.list() == []
+
+    # The current channel is always allowed even though it is not in the allow-set explicitly.
+    ok = tool.handler({"action": "create", "schedule": "daily 9am", "prompt": "x"})
+    assert ok.startswith("ok:")
+    assert store.list()[0].channel_id == "c1"
+
+
 def test_cronjob_tool_rejects_bad_schedule(tmp_path: Path) -> None:
     store = CronStore(tmp_path / "cron.json")
     tool = build_cronjob_tool(store, user_id="123", admins=("123",), channel_id="c1")

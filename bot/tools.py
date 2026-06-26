@@ -316,8 +316,16 @@ def build_save_to_kb_tool(*, token: str, repo: str, action: str, requested_by: s
     )
 
 
-def build_workspace_recall_tool(store: Store) -> Tool:
+def build_workspace_recall_tool(
+    store: Store,
+    *,
+    user_id: str = "",
+    admins: tuple[str, ...] | frozenset[str] | None = None,
+) -> Tool:
     def workspace_recall(args: dict[str, Any]) -> str:
+        # Fail closed when an admin list is supplied: only those users may search cross-channel.
+        if admins is not None and user_id not in admins:
+            return "error: cross-channel recall is restricted to admins for this server."
         rows = store.search_all_channels(args["query"])
         if not rows:
             return "no matches across channels"
@@ -346,9 +354,11 @@ def build_cronjob_tool(
     user_id: str,
     admins: tuple[str, ...] | frozenset[str],
     channel_id: str,
+    channel_allowed: Callable[[str], bool] | None = None,
 ) -> Tool:
     def cronjob(args: dict[str, Any]) -> str:
-        if admins and user_id not in admins:
+        # Fail closed: an empty admin list means nobody, never everyone.
+        if user_id not in admins:
             return "error: scheduled jobs can only be managed by admins for this server."
         action = str(args.get("action", "")).strip()
 
@@ -363,7 +373,12 @@ def build_cronjob_tool(
                 parse_schedule(schedule)
             except ScheduleError as exc:
                 return f"error: {exc}"
-            target = str(args.get("channel_id", "")).strip() or channel_id
+            requested = str(args.get("channel_id", "")).strip()
+            # A different target channel must be one the bot can actually post to in this server;
+            # the current channel (admin is already in it) is always allowed.
+            if requested and requested != channel_id and channel_allowed is not None and not channel_allowed(requested):
+                return "error: target channel is not one I can post to in this server."
+            target = requested or channel_id
             persona = str(args.get("persona", "")).strip() or None
             job = store.add(schedule=schedule, prompt=prompt, channel_id=target, persona=persona, created_by=user_id)
             return f"ok: scheduled {job.summary()}"

@@ -27,6 +27,14 @@ pull_interval_seconds = 0
 # SQLite transcript store path, relative to this bot dir. Gitignored locally; attach a volume in production.
 path = "state.db"
 
+[admins]
+# Discord user ids (as strings) with privileged access. PRIVILEGED TOOLS FAIL CLOSED:
+# cron, workspace_recall, interactive skill_manage, and user-profile (USER.md) writes are
+# disabled for everyone when this list is empty. An empty list means "no admins" — never
+# "everyone". Set this to your own user id(s) to enable those tools.
+#   ids = ["123456789012345678"]
+ids = []
+
 [memory]
 # Directory for committed long-term memory files, relative to this bot dir.
 # Runtime edits need a persistent volume in production, like state.db.
@@ -35,11 +43,9 @@ dir = "../memory"
 max_chars = 2000
 # Operational memory (MEMORY.md, target=agent) is always writable so the bot can build
 # institutional knowledge proactively. `allow_writes` gates ONLY user-profile memory
-# (USER.md, target=user); `admins` further restricts who may write profiles (empty = any
-# user when allow_writes is true). USER.md is shared across the workspace, so keep it off
-# unless you trust everyone.
+# (USER.md, target=user), which is additionally restricted to [admins].ids. USER.md is
+# shared across the workspace, so keep allow_writes off unless you trust your admins.
 allow_writes = false
-admins = []
 
 [skills]
 # Directory for curated, git-tracked agentskills.io skill packages (read-only to the agent).
@@ -59,8 +65,8 @@ max_chars = 8000
 max_results = 5
 
 [recall]
-# Channel-scoped recall is always on. Set true to also offer admins a cross-channel
-# workspace_recall tool (searches every channel's transcripts).
+# Channel-scoped recall is always on. Set true to also offer a cross-channel workspace_recall
+# tool (searches every channel's transcripts) — only ever surfaced to [admins].ids.
 workspace_enabled = false
 
 [review]
@@ -76,7 +82,9 @@ memory_nudge_interval = 10
 skill_nudge_interval = 10
 
 [cron]
-# Scheduled automations. Admins create jobs in chat ("@bot schedule a daily 9am digest…").
+# Scheduled automations. Only [admins].ids may create jobs in chat ("@bot schedule a daily
+# 9am digest…"); with no admins set, the tool is unavailable. Cross-channel targets must be
+# text channels the bot can see in this workspace.
 enabled = true
 # Job store path, relative to this bot dir (defaults next to the transcript store).
 # path = "cron.json"

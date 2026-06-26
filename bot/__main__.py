@@ -106,8 +106,16 @@ class MMOBot(discord.Client):
             return None
 
     def _is_admin(self, user_id: str) -> bool:
-        # Mirrors the remember-tool gate: an empty admin list means "anyone".
-        return (not self.cfg.memory_admins) or user_id in self.cfg.memory_admins
+        # Fail closed: privileged tools require an explicit admin list. An empty list means
+        # nobody is an admin, never everybody.
+        return user_id in self.cfg.admin_ids
+
+    def _channel_allowed(self, channel_id: str) -> bool:
+        """A cron target channel must be a text channel the bot can see in the same workspace."""
+        if not channel_id.isdigit():
+            return False
+        channel = self.get_channel(int(channel_id))
+        return channel is not None and hasattr(channel, "send")
 
     def _tracker(self, channel_id: str) -> NudgeTracker:
         tracker = self.trackers.get(channel_id)
@@ -131,26 +139,43 @@ class MMOBot(discord.Client):
             )
         # Cross-channel recall is a privileged path: only surface it to admins, and only when enabled.
         if self.cfg.workspace_recall_enabled and self._is_admin(user_id):
-            tools.append(build_workspace_recall_tool(self.store))
-        # Proactive operational memory + procedural skills (the in-turn half of self-improvement).
-        # target=agent is ungated; target=user stays gated by memory_allow_writes + admins.
+            tools.append(build_workspace_recall_tool(self.store, user_id=user_id, admins=self.cfg.admin_ids))
+        # Proactive operational memory: target=agent is ungated; target=user stays gated by
+        # memory_allow_writes + the admin list.
         tools.append(
             build_remember_tool(
                 self.memory,
                 user_id=user_id,
-                admins=self.cfg.memory_admins,
+                admins=self.cfg.admin_ids,
                 allow_user_writes=self.cfg.memory_allow_writes,
                 on_agent_write=tracker.note_memory_write,
             )
         )
-        tools.append(build_skill_manage_tool(self.skills, on_write=tracker.note_skill_write))
-        # Scheduled automations: surfaced only to admins (the tool also re-checks).
+        # Procedural skills persist into future system prompts, so interactive editing is
+        # admin-only (prompt-poisoning guard). The background-review fork writes skills via its
+        # own trusted path, independent of this gate.
+        if self._is_admin(user_id):
+            tools.append(build_skill_manage_tool(self.skills, on_write=tracker.note_skill_write))
+        # Scheduled automations: surfaced only to admins (the tool also re-checks, fail-closed).
         if self.cfg.cron_enabled and self._is_admin(user_id):
-            tools.append(build_cronjob_tool(self.cron_store, user_id=user_id, admins=self.cfg.memory_admins, channel_id=channel_id))
+            tools.append(
+                build_cronjob_tool(
+                    self.cron_store,
+                    user_id=user_id,
+                    admins=self.cfg.admin_ids,
+                    channel_id=channel_id,
+                    channel_allowed=self._channel_allowed,
+                )
+            )
         return tools
 
     async def setup_hook(self) -> None:
         register_commands(self)
+        if not self.cfg.admin_ids:
+            log.warning(
+                "No admins configured ([admins].ids is empty): cron, workspace_recall, skill_manage, "
+                "and user-profile memory are disabled for all users. Set [admins].ids to enable them."
+            )
         if self.cfg.cron_enabled:
             self.cron.use_asyncio_lock()  # now that an event loop exists
             self.loop.create_task(self._cron_loop())
