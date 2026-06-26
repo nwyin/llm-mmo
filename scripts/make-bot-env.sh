@@ -29,6 +29,7 @@ plain  "DISCORD_GUILD_ID (optional)"; GUILD="$V"
 hidden "OPENROUTER_API_KEY (sk-or-...)"; OR_KEY="$V"
 hidden "GITHUB_DISPATCH_TOKEN";   GH_TOKEN="$V"
 plain  "GITHUB_REPO (owner/repo)"; GH_REPO="$V"
+hidden "EXA_API_KEY (recommended for web research; blank = keyless DuckDuckGo)"; EXA_KEY="$V"
 unset V
 
 umask 077   # so the file is created private (600)
@@ -39,9 +40,10 @@ DISCORD_GUILD_ID=$GUILD
 OPENROUTER_API_KEY=$OR_KEY
 GITHUB_DISPATCH_TOKEN=$GH_TOKEN
 GITHUB_REPO=$GH_REPO
+EXA_API_KEY=$EXA_KEY
 EOF
 chmod 600 "$ENV_FILE"
-unset BOT_TOKEN GUILD OR_KEY GH_TOKEN GH_REPO
+unset BOT_TOKEN GUILD OR_KEY GH_TOKEN GH_REPO EXA_KEY
 
 echo "✓ Wrote $ENV_FILE (permissions 600)."
 echo "Run the bot locally with:"
