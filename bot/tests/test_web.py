@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from tools import build_web_tools
-from web import WebClient, WebError, host_is_blocked, html_to_text
+from web import WebClient, WebError, host_is_blocked, html_to_text, resolve_provider
 
 
 def _resolver_to(ip: str):
@@ -133,6 +133,25 @@ def test_web_search_tool_returns_error_string_on_failure() -> None:
 
 def test_html_to_text_collapses_whitespace() -> None:
     assert html_to_text("<p>hello   world</p>") == "hello world"
+
+
+# ---- provider resolution / keyless fallback ---------------------------------
+
+
+def test_keyed_provider_without_key_falls_back_to_ddgs() -> None:
+    assert resolve_provider("exa", "") == "ddgs"
+    assert resolve_provider("tavily", "  ") == "ddgs"
+
+
+def test_keyed_provider_with_key_is_kept() -> None:
+    assert resolve_provider("exa", "exa-key") == "exa"
+    assert resolve_provider("tavily", "tav-key") == "tavily"
+
+
+def test_keyless_and_unknown_providers_pass_through() -> None:
+    assert resolve_provider("ddgs", "") == "ddgs"
+    assert resolve_provider("EXA", "k") == "exa"  # normalized
+    assert resolve_provider("", "") == "ddgs"  # empty -> default keyless
 
 
 # ---- SSRF guard -------------------------------------------------------------

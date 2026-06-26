@@ -5,10 +5,10 @@ Two operations the agent needs to research the market, competitors, and clients:
   • search(query)  → ranked (title, url, snippet) results
   • extract(url)   → the page's main text, cleaned and length-capped
 
-Provider is pluggable. The default backend is **keyless** (DuckDuckGo) so the bot runs and
-the tests pass with no API key; set WEB_SEARCH_PROVIDER=tavily|exa plus the matching API key
-to use a paid backend. All network I/O goes through one httpx call site; tests inject an
-``httpx.MockTransport`` so nothing here ever touches the real network under pytest.
+Provider is pluggable. **Exa** is the recommended backend (set EXA_API_KEY); Tavily is an
+alternative, and keyless DuckDuckGo is the zero-config fallback used when no key is set, so the
+bot and tests run with no API key. All network I/O goes through one httpx call site; tests
+inject an ``httpx.MockTransport`` so nothing here ever touches the real network under pytest.
 """
 
 from __future__ import annotations
@@ -25,7 +25,19 @@ from dataclasses import dataclass
 import httpx
 
 DEFAULT_PROVIDER = "ddgs"
+KEYLESS_PROVIDER = "ddgs"
+KEYED_PROVIDERS = ("tavily", "exa")
 PROVIDERS = ("ddgs", "tavily", "exa")
+
+
+def resolve_provider(provider: str, api_key: str) -> str:
+    """The provider to actually use. A keyed provider (exa/tavily) with no key configured
+    falls back to keyless DuckDuckGo so the bot still has web search out of the box."""
+    provider = (provider or DEFAULT_PROVIDER).strip().lower()
+    if provider in KEYED_PROVIDERS and not (api_key or "").strip():
+        return KEYLESS_PROVIDER
+    return provider
+
 
 # Cap how many redirects extract() will follow; each hop is re-validated against the SSRF guard.
 _MAX_REDIRECTS = 5

@@ -38,7 +38,8 @@ Secrets (API keys, bot tokens, PATs) must never pass through you.
 | Discord | Free | The bot platform. |
 | OpenRouter | **Pay-as-you-go per token** | Powers chat + agents. Have them **set a spend limit** when creating the key. Sonnet-class usage for a small group is typically cents-to-a-few-dollars/month. |
 | GitHub Actions | Free tier | Generous free minutes (unlimited on public repos; a monthly allotment on private). The agents run here. |
-| Fly.io (if used to host) | **~a couple $/month** | One tiny `shared-cpu-1x`/256MB machine running 24/7. Other hosts (home box, Pi, VPS) can be free/cheaper. |
+| Exa (web search) | **Free tier, then pay-as-you-go** | Recommended search backend for the bot's research. Optional — without a key it falls back to keyless DuckDuckGo. |
+| Fly.io (if used to host) | **~a couple $/month** | One tiny `shared-cpu-1x`/256MB machine + a small persistent volume, running 24/7. Other hosts (home box, Pi, VPS) can be free/cheaper. |
 
 ## Step 0 — Dependencies
 
@@ -80,6 +81,11 @@ collect the values — they'll enter them into the scripts later.
 3. **GitHub fine-grained PAT** — <https://github.com/settings/tokens?type=beta> → repo access =
    their fork → permissions **Contents: R/W**, **Pull requests: R/W**, **Actions: R/W**. One PAT
    serves as both `PR_TOKEN` (GitHub secret) and `GITHUB_DISPATCH_TOKEN` (bot host).
+4. **Exa API key (recommended)** — <https://exa.ai> → sign up → API key. Powers the bot's web
+   research (market/competitor/client). This one goes on the **bot host only** (Fly secret or
+   local `.env`), *not* in the GitHub Actions secrets. Optional: without it the bot falls back to
+   keyless DuckDuckGo, which is rate-limited and lower quality — fine for a quick try, worth the
+   key for a real test.
 
 ## Step 3 — Upload the GitHub Actions secrets
 
@@ -113,10 +119,18 @@ bash scripts/deploy-bot-fly.sh
 ```
 
 It runs `fly launch --no-deploy` (if no app yet — remind them **not** to add a public/HTTP
-service; the bot is a worker), imports the bot's secrets over stdin, and deploys.
+service; the bot is a worker), **creates the `llm_mmo_data` persistent volume** (the bot stores
+recall, memory, cron jobs, and skills there — without it every restart wipes them), prompts for
+the bot's secrets (including the optional `EXA_API_KEY`) over stdin, and deploys. Keep it to one
+machine — `fly scale count 1` — since the bot is single-instance.
 
 **Local (just testing)** — instead of a host: `bash scripts/make-bot-env.sh` writes a gitignored
-`bot/.env`, then `cd bot && uv sync && uv run python -m bot`.
+`bot/.env` (it also asks for the optional `EXA_API_KEY`), then `cd bot && uv sync && uv run python -m bot`.
+
+**One config edit worth doing before the test:** set `[admins].ids` in `bot/config.toml` to their
+own Discord user id. Privileged features (scheduled cron jobs, cross-channel recall, editing the
+bot's skills, per-user profile memory) are **off** until an admin is listed — this is fail-closed
+by design.
 
 ## Step 6 — Verify
 

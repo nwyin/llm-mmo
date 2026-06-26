@@ -9,7 +9,7 @@ what that skill drives.
 |--------|--------------|--------------|
 | `check-deps.sh` | Reports which CLIs (`git`, `uv`, `gh`, `fly`, …) are installed + authenticated, with install commands for any that aren't. | **Read-only.** Installs/changes nothing. Run anytime. |
 | `set-github-secrets.sh` | Uploads the GitHub **Actions** secrets (`OPENROUTER_API_KEY`, `PR_TOKEN`, …) via `gh secret set`. | Writes secrets to *your* GitHub repo. No charges. |
-| `deploy-bot-fly.sh` | Creates/uses a Fly.io app, stores the bot's secrets on Fly, and deploys the always-on bot. | **Can incur Fly charges** (~a couple $/mo for one tiny machine). |
+| `deploy-bot-fly.sh` | Creates/uses a Fly.io app, **creates the persistent state volume**, stores the bot's secrets on Fly, and deploys the always-on bot. | **Can incur Fly charges** (~a couple $/mo for one tiny machine + a small volume). |
 | `make-bot-env.sh` | Writes `bot/.env` from prompts, for running the bot **locally** instead of on a host. | Writes a gitignored plaintext secrets file to your disk. |
 
 ## How secrets are handled
@@ -32,5 +32,6 @@ These scripts are deliberately careful, because secret hygiene is easy to get wr
 | Discord bot token | Developer Portal → your app → Bot | `DISCORD_BOT_TOKEN` (bot host) |
 | OpenRouter API key | <https://openrouter.ai> → Keys (set a spend limit!) | `OPENROUTER_API_KEY` (GitHub secret **and** bot host) |
 | GitHub fine-grained PAT | <https://github.com/settings/tokens?type=beta> (Contents + Pull requests + Actions: **write**) | `PR_TOKEN` (GitHub secret) **and** `GITHUB_DISPATCH_TOKEN` (bot host) — one PAT covers both |
+| Exa API key (recommended) | <https://exa.ai> → API key | `EXA_API_KEY` (**bot host only** — not a GitHub secret) for web research; falls back to keyless DuckDuckGo if unset |
 
 See `SETUP.md` for the full account/intent walkthrough and `fly.toml` for the deploy config.

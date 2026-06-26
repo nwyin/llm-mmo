@@ -43,6 +43,21 @@ else
   case "$ok" in y|Y) fly launch --no-deploy ;; *) echo "Aborted."; exit 1 ;; esac
 fi
 
+# Ensure the persistent volume exists. fly.toml mounts 'llm_mmo_data' at /data, where ALL
+# mutable state lives (recall DB, cron jobs, memory, runtime skills). Without it the deploy
+# fails; with an ephemeral disk every restart would wipe that state.
+VOL="llm_mmo_data"
+if fly volumes list 2>/dev/null | grep -q "$VOL"; then
+  echo "Persistent volume '$VOL' already exists."
+else
+  echo "No '$VOL' volume yet — creating one (1GB; pick the SAME region as the app)."
+  read -r -p "Create the volume now? [y/N] " volok
+  case "$volok" in
+    y|Y) fly volumes create "$VOL" --size 1 ;;
+    *) echo "Aborted: the bot needs this volume to persist state."; exit 1 ;;
+  esac
+fi
+
 echo
 echo "Now the bot's secrets. Blank input skips that key (e.g. the optional guild id)."
 echo "(values are hidden and piped to Fly over stdin — not echoed, not saved)"
@@ -58,6 +73,7 @@ ask "DISCORD_BOT_TOKEN (Developer Portal → Bot → Token)";        BOT_TOKEN="
 ask "OPENROUTER_API_KEY (sk-or-...)";                            OR_KEY="$REPLY_VALUE"
 ask "GITHUB_DISPATCH_TOKEN (PAT with Actions: write)";           GH_TOKEN="$REPLY_VALUE"
 printf '  %s: ' "GITHUB_REPO (owner/repo to dispatch to)"; IFS= read -r GH_REPO || true
+ask "EXA_API_KEY (recommended for web research; blank = keyless DuckDuckGo)"; EXA_KEY="$REPLY_VALUE"
 ask "DISCORD_GUILD_ID (optional, for instant slash sync)";       GUILD_ID="$REPLY_VALUE"
 unset REPLY_VALUE
 
@@ -67,9 +83,10 @@ unset REPLY_VALUE
   [ -n "$OR_KEY" ]    && printf 'OPENROUTER_API_KEY=%s\n' "$OR_KEY"
   [ -n "$GH_TOKEN" ]  && printf 'GITHUB_DISPATCH_TOKEN=%s\n' "$GH_TOKEN"
   [ -n "$GH_REPO" ]   && printf 'GITHUB_REPO=%s\n' "$GH_REPO"
+  [ -n "$EXA_KEY" ]   && printf 'EXA_API_KEY=%s\n' "$EXA_KEY"
   [ -n "$GUILD_ID" ]  && printf 'DISCORD_GUILD_ID=%s\n' "$GUILD_ID"
 } | fly secrets import
-unset BOT_TOKEN OR_KEY GH_TOKEN GH_REPO GUILD_ID
+unset BOT_TOKEN OR_KEY GH_TOKEN GH_REPO EXA_KEY GUILD_ID
 echo "✓ Secrets stored on Fly."
 
 echo

@@ -115,8 +115,9 @@ or opencode running locally in this repo can auto-load it. See [`.claude/skills/
 
 Beyond Q&A over the knowledge base, the bot can act as an ambient ops assistant:
 
-- **Web research** — `web_search` + `web_extract` (keyless DuckDuckGo by default; Tavily/Exa
-  via env). `delegate` runs a multi-step KB-and-web research subagent for client/competitor profiles.
+- **Web research** — `web_search` + `web_extract` (Exa recommended via `EXA_API_KEY`; Tavily or
+  keyless DuckDuckGo also supported, with automatic fallback to DDG when no key is set).
+  `delegate` runs a multi-step KB-and-web research subagent for client/competitor profiles.
   `web_extract` refuses private/internal/cloud-metadata addresses and re-checks every redirect hop
   (SSRF guard).
 - **Self-improvement** — after each turn a background fork saves durable *operational* memory
