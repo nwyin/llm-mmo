@@ -30,6 +30,10 @@ hidden "OPENROUTER_API_KEY (sk-or-...)"; OR_KEY="$V"
 hidden "GITHUB_DISPATCH_TOKEN";   GH_TOKEN="$V"
 plain  "GITHUB_REPO (owner/repo)"; GH_REPO="$V"
 hidden "EXA_API_KEY (recommended for web research; blank = keyless DuckDuckGo)"; EXA_KEY="$V"
+# Not used by the bot itself — staged here so set-github-secrets.sh can mirror it
+# up as the DISCORD_WEBHOOK_URL Actions secret (lets finished actions post the PR
+# link back to a channel). Blank to skip.
+plain  "DISCORD_WEBHOOK_URL (optional; for set-github-secrets.sh)"; WEBHOOK="$V"
 unset V
 
 umask 077   # so the file is created private (600)
@@ -41,9 +45,10 @@ OPENROUTER_API_KEY=$OR_KEY
 GITHUB_DISPATCH_TOKEN=$GH_TOKEN
 GITHUB_REPO=$GH_REPO
 EXA_API_KEY=$EXA_KEY
+DISCORD_WEBHOOK_URL=$WEBHOOK
 EOF
 chmod 600 "$ENV_FILE"
-unset BOT_TOKEN GUILD OR_KEY GH_TOKEN GH_REPO EXA_KEY
+unset BOT_TOKEN GUILD OR_KEY GH_TOKEN GH_REPO EXA_KEY WEBHOOK
 
 echo "✓ Wrote $ENV_FILE (permissions 600)."
 echo "Run the bot locally with:"

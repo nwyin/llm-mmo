@@ -21,7 +21,7 @@ markdown knowledge base.
 | `scripts/lib.sh` | Shared: opencode auth, timeout wrapper, `run_opencode`. |
 | `scripts/extract-output.py` | Pulls the agent's final text out of the JSON event stream. |
 | `scripts/post-comment.py` | Posts/queries Knowledge review comments (with a turn cap). |
-| `scripts/notify-discord.py` | Optional: posts the finished PR link back to a Discord webhook. |
+| `scripts/notify-discord.py` | Optional: posts the finished PR link back to Discord — to the **originating channel** via `DISCORD_BOT_TOKEN`+`channel_id` if set, else to a fixed-channel `DISCORD_WEBHOOK_URL`. Best-effort; never fails the run. |
 
 ## The two triggers
 

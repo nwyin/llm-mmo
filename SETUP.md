@@ -16,8 +16,11 @@ Budget ~20 minutes.
 
 1. Go to <https://discord.com/developers/applications> → **New Application**. Name it.
 2. **Bot** tab → **Add Bot**. Copy the **Token** (you'll set it as `DISCORD_BOT_TOKEN`).
-3. Under **Privileged Gateway Intents**, enable **Message Content Intent** — required so the
-   bot can read `@mention` messages (not just slash commands).
+3. Under **Privileged Gateway Intents**, enable **Message Content Intent**, then **click "Save
+   Changes"** at the bottom — required so the bot can read `@mention` messages (not just slash
+   commands). ⚠️ If you skip this (or forget to Save), the bot logs in, syncs its slash commands,
+   then immediately crashes with `discord.errors.PrivilegedIntentsRequired`. Flip the toggle, Save,
+   and restart.
 4. **Installation** (or **OAuth2 → URL Generator**) tab:
    - Scopes: `bot`, `applications.commands`
    - Bot permissions: `Send Messages`, `Read Message History`, `Use Slash Commands`
@@ -53,7 +56,14 @@ Settings → Secrets and variables → **Actions** → New repository secret:
 |--------|----------|---------|
 | `OPENROUTER_API_KEY` | ✅ | LLM calls for review + action agents. |
 | `PR_TOKEN` | recommended | PAT used to open PRs so the review workflow fires on them. Falls back to `GITHUB_TOKEN` (no downstream review) if unset. |
-| `DISCORD_WEBHOOK_URL` | optional | A channel webhook so finished actions post the PR link back to Discord. Create via Discord → channel → Edit → Integrations → Webhooks. |
+| `DISCORD_BOT_TOKEN` | optional | Lets finished actions post the PR link back to the **originating channel** (wherever the command was invoked), via the bot REST API using the `channel_id` already in the dispatch payload. ⚠️ Puts full bot access in CI — use the narrower webhook below if you'd rather not. |
+| `DISCORD_WEBHOOK_URL` | optional | **Fixed-channel** fallback: a channel webhook so finished actions post the PR link to that one channel. Used only when `DISCORD_BOT_TOKEN` is unset. A webhook is bound to the channel it was created in — it cannot post elsewhere. Create via Discord → channel → Edit → Integrations → Webhooks. |
+
+> **Guided path:** `scripts/set-github-secrets.sh` uploads these for you. If you've already created
+> `bot/.env` (step 5 / `make-bot-env.sh`), it reads the values straight from there — `PR_TOKEN`
+> reuses the same PAT you saved as `GITHUB_DISPATCH_TOKEN` — so you enter each secret only once. If
+> there's no `.env` (e.g. you host on Fly), it prompts for each value instead. Run `make-bot-env.sh`
+> first to skip the typing.
 
 Optional **Variables** (Settings → Variables → Actions) tune models without code changes:
 
