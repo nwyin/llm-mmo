@@ -74,6 +74,11 @@ jobs:
       - name: Notify Discord
         if: always()
         env:
+          # If DISCORD_BOT_TOKEN is set, notify-discord.py posts to the originating
+          # CHANNEL_ID (wherever the command was invoked). Otherwise it falls back to
+          # the fixed-channel DISCORD_WEBHOOK_URL. Both optional; neither is fatal.
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ github.event.client_payload.channel_id }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ "${{ steps.action.outcome }}" = "success" ] && [ -n "${{ steps.action.outputs.PR_URL }}" ]; then

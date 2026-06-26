@@ -72,9 +72,12 @@ collect the values — they'll enter them into the scripts later.
 1. **Discord application & bot** — <https://discord.com/developers/applications> → New
    Application → **Bot** tab → copy the **Token**. Then:
    - **Bot tab → turn OFF "Public Bot"** (so only they can invite it).
-   - **Bot tab → enable "Message Content Intent"** (required to read `@mention` text). At their
-     scale this is a free toggle — Discord only requires an *application* for privileged intents
-     once an app can reach 10,000+ users (changed June 2026; it used to be 100 servers).
+   - **Bot tab → enable "Message Content Intent", then click "Save Changes"** (required to read
+     `@mention` text). At their scale this is a free toggle — Discord only requires an
+     *application* for privileged intents once an app can reach 10,000+ users (changed June 2026;
+     it used to be 100 servers). **If this toggle is off (or Save was skipped), the bot logs in,
+     syncs slash commands, then crashes with `discord.errors.PrivilegedIntentsRequired`** — the
+     #1 first-run gotcha. If you see that traceback in Step 6, this is the fix.
 2. **OpenRouter API key** — <https://openrouter.ai> → Keys → create one (starts `sk-or-`).
    Tell them to **set a spend limit** on the key now. This single key is used in two places
    (GitHub secret + bot host).
@@ -95,9 +98,14 @@ The user runs (offer to show them the script first):
 bash scripts/set-github-secrets.sh
 ```
 
-It prompts (hidden) for `OPENROUTER_API_KEY` (required), `PR_TOKEN` (recommended), and
-`DISCORD_WEBHOOK_URL` (optional), and stores them on their repo via `gh`. Verify with
-`gh secret list`.
+It uploads `OPENROUTER_API_KEY` (required), `PR_TOKEN` (recommended; reuses the same fine-grained
+PAT stored as `GITHUB_DISPATCH_TOKEN`), and `DISCORD_WEBHOOK_URL` (optional) to their repo via
+`gh`. **It sources values from `bot/.env`** when that file exists (so secrets are entered only
+once), and falls back to a hidden prompt for anything missing. Verify with `gh secret list`.
+
+> **Order tip for the local-host path:** since `set-github-secrets.sh` reads from `bot/.env`, run
+> **Step 5's `make-bot-env.sh` first** — then this step needs no typing at all. On the Fly path
+> there's no local `.env`, so this script just prompts (hidden) for each value, as before.
 
 ## Step 4 — Invite the bot to their server
 
@@ -125,7 +133,10 @@ the bot's secrets (including the optional `EXA_API_KEY`) over stdin, and deploys
 machine — `fly scale count 1` — since the bot is single-instance.
 
 **Local (just testing)** — instead of a host: `bash scripts/make-bot-env.sh` writes a gitignored
-`bot/.env` (it also asks for the optional `EXA_API_KEY`), then `cd bot && uv sync && uv run python -m bot`.
+`bot/.env` (it also asks for the optional `EXA_API_KEY` and `DISCORD_WEBHOOK_URL`), then
+`cd bot && uv sync && uv run python -m bot`. Running this **before** Step 3 means
+`set-github-secrets.sh` picks up `OPENROUTER_API_KEY`/`PR_TOKEN`/`DISCORD_WEBHOOK_URL` straight
+from `bot/.env` with no re-typing.
 
 **One config edit worth doing before the test:** set `[admins].ids` in `bot/config.toml` to their
 own Discord user id. Privileged features (scheduled cron jobs, cross-channel recall, editing the
@@ -139,5 +150,10 @@ by design.
 - In Discord: `@TheBot hello` (chat reply), `/ask question: ...`, and `/save link: <url>` —
   watch a pull request appear in their repo, then the review workflow comment on it.
 
-If something fails, point them at `SETUP.md` (full reference), `scripts/README.md` (what each
+**Most common first-run failure:** the bot logs in, prints `Synced N slash command(s)`, then
+crashes with `discord.errors.PrivilegedIntentsRequired`. That means the **Message Content Intent**
+is off — send them to the **Bot** tab, toggle it on, **click Save Changes**, and restart. (It's
+*not* a bad token: a token error fails earlier, before the sync line.)
+
+If something else fails, point them at `SETUP.md` (full reference), `scripts/README.md` (what each
 script touches), and `workflows/README.md` (the Actions side).
