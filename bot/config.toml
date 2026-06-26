@@ -55,9 +55,11 @@ allow_writes = false
 dir = "../.agents/skills"
 
 [web]
-# Web research provider: "ddgs" (keyless, default), "tavily", or "exa". For tavily/exa set
-# WEB_SEARCH_PROVIDER plus TAVILY_API_KEY / EXA_API_KEY in .env.
-provider = "ddgs"
+# Web research provider. "exa" (recommended) — neural search tuned for research/competitor/
+# client discovery; set EXA_API_KEY in .env (get one at https://exa.ai). "tavily" is an
+# alternative (TAVILY_API_KEY). "ddgs" is keyless. If the chosen keyed provider has no key,
+# the bot falls back to keyless DuckDuckGo so web search still works out of the box.
+provider = "exa"
 timeout_seconds = 20
 # Max characters returned by web_extract for a single page.
 max_chars = 8000

@@ -43,7 +43,7 @@ from tools import (
     build_workspace_recall_tool,
 )
 from usage import UsageMeter
-from web import WebClient
+from web import WebClient, resolve_provider
 
 # Background-review status notices are posted with this marker so they can be filtered out of
 # conversation history (they are non-conversational bookkeeping, not turns).
@@ -99,9 +99,18 @@ class MMOBot(discord.Client):
 
     @staticmethod
     def _build_web_client(cfg: Config) -> WebClient | None:
+        # A keyed provider (exa/tavily) with no key falls back to keyless DuckDuckGo so web
+        # search still works out of the box; warn so it's obvious the recommended backend is off.
+        provider = resolve_provider(cfg.web_provider, cfg.web_api_key)
+        if provider != cfg.web_provider:
+            log.warning(
+                "web provider %r has no API key — falling back to keyless DuckDuckGo. Set the matching key (e.g. EXA_API_KEY) to use %r.",
+                cfg.web_provider,
+                cfg.web_provider,
+            )
         try:
             return WebClient(
-                provider=cfg.web_provider,
+                provider=provider,
                 api_key=cfg.web_api_key,
                 timeout=cfg.web_timeout,
                 max_chars=cfg.web_max_chars,
