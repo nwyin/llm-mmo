@@ -26,10 +26,11 @@ default = "ops"
 # volume: STATE_DIR=/data. The git checkout stays immutable (code + knowledge + seeds).
 
 [knowledge]
-# Pull the repo every N seconds so chat stays fresh after merges. 0 = never. When > 0 the bot
-# runs `git pull --ff-only` + reloads knowledge in the background (safe: state is outside the
-# checkout). Private repos authenticate via GITHUB_DISPATCH_TOKEN.
-pull_interval_seconds = 0
+# Pull the repo every N seconds so chat stays fresh after merges. When > 0 the bot runs
+# `git pull --ff-only` + reloads the knowledge index in the background (safe: state is outside
+# the checkout). Set to 0 to disable. Private repos authenticate via GITHUB_DISPATCH_TOKEN.
+# Default: 300s — without this, merged PRs never reach a running bot until it's redeployed.
+pull_interval_seconds = 300
 
 [admins]
 # Discord user ids (as strings) with privileged access. PRIVILEGED TOOLS FAIL CLOSED:
